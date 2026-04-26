@@ -63,16 +63,13 @@ The TUI shows a table of all entities that have DLQ messages. Select one to rece
 
 ```bash
 # Seed 50 messages into the "orders" queue DLQ
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- \
-  seed orders -n my-namespace -c 50 -r "LoadTest"
+dotnet run --project Reviver.Console/Reviver.Console.csproj -- seed orders -n my-namespace -c 50 -r "LoadTest"
 
 # Seed into a topic subscription
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- \
-  seed events/payments -n my-namespace -c 10
+dotnet run --project Reviver.Console/Reviver.Console.csproj -- seed events/payments -n my-namespace -c 10
 
 # Custom payload template
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- \
-  seed orders -n my-namespace -p '{"id":"{guid}","seq":{index}}'
+dotnet run --project Reviver.Console/Reviver.Console.csproj -- seed orders -n my-namespace -p '{"id":"{guid}","seq":{index}}'
 ```
 
 Payload template placeholders: `{index}`, `{timestamp}`, `{guid}`.
@@ -120,8 +117,7 @@ dotnet test
 dotnet test Reviver.Tests/Reviver.Tests.csproj --filter "FullyQualifiedName~NamingHelperTests"
 
 # Run a single test
-dotnet test Reviver.Tests/Reviver.Tests.csproj \
-  --filter "FullyQualifiedName~NamingHelperTests.NormalizeNamespace_ReturnsExpectedFqdn"
+dotnet test Reviver.Tests/Reviver.Tests.csproj --filter "FullyQualifiedName~NamingHelperTests.NormalizeNamespace_ReturnsExpectedFqdn"
 ```
 
 Tests cover the pure helpers directly and use `NSubstitute` mocks of `IServiceBusRepository` for orchestration tests. `ServiceBusReceivedMessage` is a sealed Azure SDK type — create test instances via `ServiceBusModelFactory.ServiceBusReceivedMessage(...)`.
