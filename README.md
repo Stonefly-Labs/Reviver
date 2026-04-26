@@ -151,3 +151,23 @@ dotnet test Reviver.Tests/Reviver.Tests.csproj --filter "FullyQualifiedName~Nami
 # Pack
 dotnet pack Reviver.Console/Reviver.Console.csproj -c Release
 ```
+
+### CI & Releases
+
+Every push to `main` triggers a build, test run (results published as a GitHub Check), and a release.
+
+**Versioning** defaults to bumping the patch component from the last tag (`0.0.X`). To cut a specific version, include it anywhere in the commit or PR body:
+
+```
+feat: redesigned entity list  v1.0.0
+```
+
+The release includes four self-contained binaries and the NuGet global tool package:
+
+| Asset | Platform |
+|---|---|
+| `reviver-vX.Y.Z-win-x64.zip` | Windows x64 |
+| `reviver-vX.Y.Z-linux-x64.tar.gz` | Linux x64 |
+| `reviver-vX.Y.Z-osx-x64.tar.gz` | macOS Intel |
+| `reviver-vX.Y.Z-osx-arm64.tar.gz` | macOS Apple Silicon |
+| `StoneFlyLabs.Reviver.X.Y.Z.nupkg` | .NET global tool (all platforms) |

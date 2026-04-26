@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write       # push tags + create releases
+  checks: write         # publish test results as check runs
+  pull-requests: write  # annotate PRs with test results
+
+jobs:
+  # ── Build & Test ─────────────────────────────────────────────────────────────
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --logger trx --results-directory TestResults
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: xUnit Tests
+          path: TestResults/*.trx
+          reporter: dotnet-trx
+          fail-on-error: true
+
+  # ── Release ───────────────────────────────────────────────────────────────────
+  release:
+    name: Release
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so tag lookup works
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # ── Version ───────────────────────────────────────────────────────────────
+      #
+      # Default: bump patch from last semver tag  →  0.0.X
+      # Override: include "vMAJOR.MINOR.PATCH" anywhere in the commit/PR body
+      #   e.g.  "feat: big thing  v1.0.0"
+      #         "this is now v2.1.0"
+      #
+      - name: Determine version
+        id: version
+        run: |
+          LAST_TAG=$(git tag --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+          [ -z "$LAST_TAG" ] && LAST_TAG="v0.0.0"
+
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          EXPLICIT=$(echo "$COMMIT_MSG" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+
+          if [ -n "$EXPLICIT" ]; then
+            VERSION="$EXPLICIT"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
+            VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+
+          SEMVER="${VERSION#v}"
+          echo "version=$VERSION"   >> $GITHUB_OUTPUT
+          echo "semver=$SEMVER"     >> $GITHUB_OUTPUT
+          echo "::notice::Releasing $VERSION"
+
+      - name: Tag commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.version }}
+          git push origin ${{ steps.version.outputs.version }}
+
+      # ── Self-contained builds ─────────────────────────────────────────────────
+      - name: Publish — win-x64
+        run: |
+          dotnet publish Reviver.Console/Reviver.Console.csproj \
+            -c Release -r win-x64 --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.semver }} \
+            -o publish/win-x64
+
+      - name: Publish — linux-x64
+        run: |
+          dotnet publish Reviver.Console/Reviver.Console.csproj \
+            -c Release -r linux-x64 --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.semver }} \
+            -o publish/linux-x64
+
+      - name: Publish — osx-x64
+        run: |
+          dotnet publish Reviver.Console/Reviver.Console.csproj \
+            -c Release -r osx-x64 --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.semver }} \
+            -o publish/osx-x64
+
+      - name: Publish — osx-arm64
+        run: |
+          dotnet publish Reviver.Console/Reviver.Console.csproj \
+            -c Release -r osx-arm64 --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.semver }} \
+            -o publish/osx-arm64
+
+      # ── NuGet global tool package ─────────────────────────────────────────────
+      - name: Pack NuGet tool
+        run: |
+          dotnet pack Reviver.Console/Reviver.Console.csproj \
+            -c Release \
+            -p:Version=${{ steps.version.outputs.semver }} \
+            -o publish/nupkg
+
+      # ── Archive ───────────────────────────────────────────────────────────────
+      - name: Create archives
+        run: |
+          V=${{ steps.version.outputs.version }}
+          (cd publish/win-x64   && zip -r   "../../reviver-${V}-win-x64.zip"      .)
+          (cd publish/linux-x64 && tar -czf "../../reviver-${V}-linux-x64.tar.gz" .)
+          (cd publish/osx-x64   && tar -czf "../../reviver-${V}-osx-x64.tar.gz"   .)
+          (cd publish/osx-arm64 && tar -czf "../../reviver-${V}-osx-arm64.tar.gz" .)
+
+      # ── GitHub Release ────────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            reviver-${{ steps.version.outputs.version }}-win-x64.zip
+            reviver-${{ steps.version.outputs.version }}-linux-x64.tar.gz
+            reviver-${{ steps.version.outputs.version }}-osx-x64.tar.gz
+            reviver-${{ steps.version.outputs.version }}-osx-arm64.tar.gz
+            publish/nupkg/StoneFlyLabs.Reviver.${{ steps.version.outputs.semver }}.nupkg
