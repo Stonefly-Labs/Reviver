@@ -1,6 +1,6 @@
 using Azure.Messaging.ServiceBus;
 
-namespace SbDlq.Models;
+namespace StoneFlyLabs.Reviver.Models;
 
 public sealed class DlqMessage
 {

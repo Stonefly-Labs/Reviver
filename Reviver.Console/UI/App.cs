@@ -1,27 +1,31 @@
 using System.Diagnostics;
-using System.Text.Json;
-using SbDlq.Models;
-using SbDlq.Services;
+using StoneFlyLabs.Reviver.Commands;
+using StoneFlyLabs.Reviver.Helpers;
+using StoneFlyLabs.Reviver.Models;
+using StoneFlyLabs.Reviver.Services;
 using Spectre.Console;
 
-namespace SbDlq.UI;
+namespace StoneFlyLabs.Reviver.UI;
 
-public sealed class App
+public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 {
-    private ServiceBusService? _svc;
+    private IServiceBusRepository? _repo;
 
-    // Sentinel instances for special menu items
-    private static readonly EntityInfo RefreshSentinel = new("↩  Refresh", "__refresh__", null, 0);
-    private static readonly EntityInfo ExitSentinel    = new("✕  Exit",    "__exit__",    null, 0);
+    private static readonly EntityInfo RefreshSentinel = new("↩  Refresh",  "__refresh__", null, 0);
+    private static readonly EntityInfo SeedSentinel    = new("⚡ Seed DLQ", "__seed__",    null, 0);
+    private static readonly EntityInfo ExitSentinel    = new("✕  Exit",     "__exit__",    null, 0);
 
-    public async Task RunAsync()
+    // ── Entry point ───────────────────────────────────────────────────────────
+
+    /// <param name="presetFqdn">Already-normalised FQDN from CLI flag; null prompts the user.</param>
+    public async Task RunAsync(string? presetFqdn = null)
     {
         ShowBanner();
 
-        var fqdn = PromptNamespace();
-        _svc = new ServiceBusService(fqdn);
+        var fqdn = presetFqdn ?? PromptNamespace();
+        _repo = repoFactory(fqdn);
 
-        await using (_svc)
+        await using (_repo)
         {
             await MainLoopAsync();
         }
@@ -33,8 +37,8 @@ public sealed class App
 
     private static void ShowBanner()
     {
-        AnsiConsole.Write(new FigletText("SB  DLQ").Color(Color.Blue));
-        AnsiConsole.MarkupLine("[grey]Azure Service Bus · Dead-Letter Queue Reconciliation Tool[/]");
+        AnsiConsole.Write(new FigletText("Reviver").Color(Color.Blue));
+        AnsiConsole.MarkupLine("[grey]StoneFlyLabs · Azure Service Bus DLQ Reconciliation[/]");
         AnsiConsole.WriteLine();
     }
 
@@ -52,9 +56,7 @@ public sealed class App
         if (!string.IsNullOrWhiteSpace(env))
             prompt.DefaultValue(env);
 
-        var ns = AnsiConsole.Prompt(prompt).Trim();
-
-        return ns.Contains('.') ? ns : $"{ns}.servicebus.windows.net";
+        return NamingHelper.NormalizeNamespace(AnsiConsole.Prompt(prompt));
     }
 
     // ── Main entity-list loop ─────────────────────────────────────────────────
@@ -65,7 +67,7 @@ public sealed class App
         {
             AnsiConsole.Clear();
             ShowBanner();
-            AnsiConsole.MarkupLine($"[grey]Namespace:[/] [blue]{_svc!.NamespaceFqdn}[/]\n");
+            AnsiConsole.MarkupLine($"[grey]Namespace:[/] [blue]{_repo!.NamespaceFqdn}[/]\n");
 
             List<EntityInfo>? entities = null;
             Exception? loadErr = null;
@@ -75,7 +77,7 @@ public sealed class App
                 .SpinnerStyle(Style.Parse("blue"))
                 .StartAsync("Loading entities…", async _ =>
                 {
-                    try   { entities = await _svc.GetEntitiesWithDlqMessagesAsync(); }
+                    try   { entities = await _repo.GetEntitiesWithDlqMessagesAsync(); }
                     catch (Exception ex) { loadErr = ex; }
                 });
 
@@ -91,7 +93,14 @@ public sealed class App
             {
                 AnsiConsole.MarkupLine("[green]✓ No DLQ messages — everything is clean![/]");
                 AnsiConsole.WriteLine();
-                if (!AnsiConsole.Confirm("Refresh?")) return;
+
+                var idle = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("What now?")
+                        .AddChoices("Refresh", "Seed DLQ", "Exit"));
+
+                if (idle == "Exit") return;
+                if (idle == "Seed DLQ") await new SeederFlow(_repo).RunAsync();
                 continue;
             }
 
@@ -103,9 +112,16 @@ public sealed class App
                     .PageSize(20)
                     .HighlightStyle(Style.Parse("blue bold"))
                     .UseConverter(EntityLabel)
-                    .AddChoices([.. entities, RefreshSentinel, ExitSentinel]));
+                    .AddChoices([.. entities, SeedSentinel, RefreshSentinel, ExitSentinel]));
 
             if (choice == ExitSentinel) return;
+
+            if (choice == SeedSentinel)
+            {
+                await new SeederFlow(_repo).RunAsync();
+                continue;
+            }
+
             if (choice == RefreshSentinel) continue;
 
             await ProcessEntityAsync(choice);
@@ -114,13 +130,11 @@ public sealed class App
 
     private static string EntityLabel(EntityInfo e)
     {
+        if (e == SeedSentinel)    return "[yellow]⚡ Seed DLQ[/]";
         if (e == RefreshSentinel) return "[grey]↩  Refresh[/]";
         if (e == ExitSentinel)    return "[grey]✕  Exit[/]";
 
-        var type = e.IsQueue
-            ? "[cyan]Queue[/]"
-            : "[yellow]Topic/Sub[/]";
-
+        var type = e.IsQueue ? "[cyan]Queue[/]" : "[yellow]Topic/Sub[/]";
         return $"{Markup.Escape(e.DisplayName)}  [grey]({type}[grey] · [/][red]{e.DlqMessageCount}[/][grey] DLQ)[/]";
     }
 
@@ -145,11 +159,11 @@ public sealed class App
         AnsiConsole.WriteLine();
     }
 
-    // ── Receive batch and process ─────────────────────────────────────────────
+    // ── Receive batch and hand off ────────────────────────────────────────────
 
     private async Task ProcessEntityAsync(EntityInfo entity)
     {
-        DlqSession? session = null;
+        IDlqSession? session = null;
         Exception? err = null;
 
         await AnsiConsole.Status()
@@ -157,7 +171,7 @@ public sealed class App
             .SpinnerStyle(Style.Parse("blue"))
             .StartAsync($"Receiving from {entity.DisplayName} DLQ…", async _ =>
             {
-                try   { session = await _svc!.OpenDlqSessionAsync(entity, maxMessages: 20); }
+                try   { session = await _repo!.OpenDlqSessionAsync(entity, maxMessages: 20); }
                 catch (Exception ex) { err = ex; }
             });
 
@@ -172,7 +186,7 @@ public sealed class App
 
         if (s.Messages.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]No messages received (batch empty or locked by another consumer).[/]");
+            AnsiConsole.MarkupLine("[yellow]No messages received (batch empty or held by another consumer).[/]");
             Pause();
             return;
         }
@@ -180,10 +194,10 @@ public sealed class App
         await ProcessBatchAsync(s);
     }
 
-    // Wrapper needed because SelectionPrompt<T> requires T : notnull
+    // Wrapper because SelectionPrompt<T> requires T : notnull
     private sealed record MsgItem(DlqMessage? Message);
 
-    private async Task ProcessBatchAsync(DlqSession session)
+    private async Task ProcessBatchAsync(IDlqSession session)
     {
         var pending = session.Messages.ToList();
         var doneItem = new MsgItem((DlqMessage?)null);
@@ -204,7 +218,6 @@ public sealed class App
 
             if (choice.Message is null)
             {
-                // Abandon remaining — put them back on the DLQ
                 await AbandonAllAsync(session, pending);
                 break;
             }
@@ -215,10 +228,9 @@ public sealed class App
             if (action is MessageAction.Sent or MessageAction.Discarded)
             {
                 pending.Remove(msg);
-                var label = action == MessageAction.Sent
+                AnsiConsole.MarkupLine(action == MessageAction.Sent
                     ? "[green]✓ Sent and removed from DLQ.[/]"
-                    : "[yellow]✓ Discarded from DLQ.[/]";
-                AnsiConsole.MarkupLine(label);
+                    : "[yellow]✓ Discarded from DLQ.[/]");
                 await Task.Delay(900);
             }
         }
@@ -241,7 +253,7 @@ public sealed class App
         return $"[white]{Markup.Escape(m.MessageId)}[/]  [grey]{m.EnqueuedAt:yyyy-MM-dd HH:mm:ss}[/]{reason}";
     }
 
-    private static async Task AbandonAllAsync(DlqSession session, List<DlqMessage> messages)
+    private static async Task AbandonAllAsync(IDlqSession session, IEnumerable<DlqMessage> messages)
     {
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
@@ -257,9 +269,8 @@ public sealed class App
 
     // ── Message detail + action loop ──────────────────────────────────────────
 
-    private async Task<MessageAction> ShowMessageDetailAsync(DlqSession session, DlqMessage message)
+    private async Task<MessageAction> ShowMessageDetailAsync(IDlqSession session, DlqMessage message)
     {
-        // Renew lock in background while user reads / edits
         using var renewCts = new CancellationTokenSource();
         var renewTask = RenewLockLoopAsync(session, message, renewCts.Token);
 
@@ -284,7 +295,7 @@ public sealed class App
                 switch (action)
                 {
                     case "Edit Body":
-                        EditBody(message);
+                        await EditBodyAsync(message);
                         break;
 
                     case "Edit Application Properties":
@@ -297,7 +308,7 @@ public sealed class App
                         break;
 
                     case "Discard  (complete without resending)":
-                        if (AnsiConsole.Confirm("[red]Permanently remove this message from DLQ without resending?[/]"))
+                        if (AnsiConsole.Confirm("[red]Permanently remove from DLQ without resending?[/]"))
                         {
                             await session.CompleteAsync(message);
                             return MessageAction.Discarded;
@@ -316,7 +327,7 @@ public sealed class App
         }
     }
 
-    private static async Task RenewLockLoopAsync(DlqSession session, DlqMessage message, CancellationToken ct)
+    private static async Task RenewLockLoopAsync(IDlqSession session, DlqMessage message, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -333,7 +344,6 @@ public sealed class App
 
     private static void RenderMessageDetail(DlqMessage msg)
     {
-        // Meta grid
         var grid = new Grid().AddColumn().AddColumn();
         AddRow(grid, "Message ID",  msg.MessageId);
         AddRow(grid, "Enqueued",    msg.EnqueuedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"));
@@ -341,16 +351,12 @@ public sealed class App
 
         if (msg.DeadLetterReason is not null)
             AddRow(grid, "DLQ Reason", $"[red]{Markup.Escape(msg.DeadLetterReason)}[/]");
-
         if (msg.DeadLetterErrorDescription is not null)
             AddRow(grid, "DLQ Description", $"[red]{Markup.Escape(msg.DeadLetterErrorDescription)}[/]");
-
         if (msg.ContentType is not null)
             AddRow(grid, "Content-Type", msg.ContentType);
-
         if (msg.Subject is not null)
             AddRow(grid, "Subject", msg.Subject);
-
         if (msg.CorrelationId is not null)
             AddRow(grid, "Correlation ID", msg.CorrelationId);
 
@@ -358,15 +364,13 @@ public sealed class App
             .Header("[blue bold] Message [/]")
             .Border(BoxBorder.Rounded));
 
-        // Body
-        var bodyText = TryFormatJson(msg.Body);
-        var truncated = bodyText.Length > 3000 ? bodyText[..3000] + "\n[grey]… (truncated)[/]" : bodyText;
+        var bodyText = JsonHelper.TryFormat(msg.Body);
+        var display  = bodyText.Length > 3000 ? bodyText[..3000] + "\n[grey]… (truncated)[/]" : bodyText;
 
-        AnsiConsole.Write(new Panel(new Markup(Markup.Escape(truncated)))
+        AnsiConsole.Write(new Panel(new Markup(Markup.Escape(display)))
             .Header("[blue bold] Body [/]")
             .Border(BoxBorder.Rounded));
 
-        // Application properties
         if (msg.ApplicationProperties.Count > 0)
         {
             var propTable = new Table()
@@ -390,13 +394,13 @@ public sealed class App
 
     // ── Body editor ───────────────────────────────────────────────────────────
 
-    private static void EditBody(DlqMessage message)
+    private static async Task EditBodyAsync(DlqMessage message)
     {
-        var tempFile = Path.Combine(Path.GetTempPath(), $"dlq-{message.MessageId}.json");
+        var tempFile = Path.Combine(Path.GetTempPath(), $"reviver-{message.MessageId}.json");
 
         try
         {
-            File.WriteAllText(tempFile, TryFormatJson(message.Body));
+            await File.WriteAllTextAsync(tempFile, JsonHelper.TryFormat(message.Body));
 
             var editor = Environment.GetEnvironmentVariable("EDITOR")
                 ?? (OperatingSystem.IsWindows() ? "notepad.exe" : "nano");
@@ -407,9 +411,11 @@ public sealed class App
             {
                 UseShellExecute = OperatingSystem.IsWindows()
             });
-            proc?.WaitForExit();
 
-            var updated = File.ReadAllText(tempFile).Trim();
+            if (proc is not null)
+                await proc.WaitForExitAsync();
+
+            var updated = (await File.ReadAllTextAsync(tempFile)).Trim();
 
             if (string.IsNullOrWhiteSpace(updated))
             {
@@ -418,20 +424,16 @@ public sealed class App
                 return;
             }
 
-            // Validate if it looks like JSON
-            if (updated.StartsWith('{') || updated.StartsWith('['))
+            if ((updated.StartsWith('{') || updated.StartsWith('[')) &&
+                !JsonHelper.IsValid(updated, out var jsonErr))
             {
-                try { JsonDocument.Parse(updated); }
-                catch (JsonException ex)
-                {
-                    AnsiConsole.MarkupLine($"[yellow]Warning:[/] Invalid JSON — {Markup.Escape(ex.Message)}");
-                    if (!AnsiConsole.Confirm("Use it anyway?")) return;
-                }
+                AnsiConsole.MarkupLine($"[yellow]Warning:[/] Invalid JSON — {Markup.Escape(jsonErr)}");
+                if (!AnsiConsole.Confirm("Use it anyway?")) return;
             }
 
             message.Body = updated;
             AnsiConsole.MarkupLine("[green]✓ Body updated.[/]");
-            Task.Delay(700).Wait();
+            await Task.Delay(700);
         }
         catch (Exception ex)
         {
@@ -451,7 +453,8 @@ public sealed class App
         while (true)
         {
             AnsiConsole.Clear();
-            AnsiConsole.MarkupLine("[blue bold] Application Properties [/]\n");
+            AnsiConsole.Write(new Rule("[blue bold] Application Properties [/]").RuleStyle("blue"));
+            AnsiConsole.WriteLine();
 
             if (message.ApplicationProperties.Count > 0)
             {
@@ -475,7 +478,7 @@ public sealed class App
 
             var action = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
-                    .Title("Properties action:")
+                    .Title("Action:")
                     .AddChoices("Add / Edit property", "Remove property", "↩  Done"));
 
             switch (action)
@@ -507,7 +510,7 @@ public sealed class App
 
     // ── Send flow ─────────────────────────────────────────────────────────────
 
-    private async Task<bool> SendFlowAsync(DlqSession session, DlqMessage message)
+    private async Task<bool> SendFlowAsync(IDlqSession session, DlqMessage message)
     {
         List<EntityInfo>? destinations = null;
         Exception? err = null;
@@ -516,7 +519,7 @@ public sealed class App
             .Spinner(Spinner.Known.Dots)
             .StartAsync("Loading destinations…", async _ =>
             {
-                try   { destinations = await _svc!.GetAllSendDestinationsAsync(); }
+                try   { destinations = await _repo!.GetAllSendDestinationsAsync(); }
                 catch (Exception ex) { err = ex; }
             });
 
@@ -534,7 +537,7 @@ public sealed class App
             return false;
         }
 
-        // Move default (originating) to top
+        // Bubble the originating source to top
         var defaultDest = destinations.FirstOrDefault(d => d.QueueOrTopicName == session.Entity.SendPath);
         if (defaultDest is not null)
         {
@@ -571,7 +574,7 @@ public sealed class App
             {
                 try
                 {
-                    await _svc!.SendMessageAsync(dest.SendPath, message);
+                    await _repo!.SendMessageAsync(dest.SendPath, message);
                     await session.CompleteAsync(message);
                     success = true;
                 }
@@ -591,21 +594,6 @@ public sealed class App
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static string TryFormatJson(string input)
-    {
-        if (string.IsNullOrWhiteSpace(input)) return input;
-
-        try
-        {
-            var doc = JsonDocument.Parse(input);
-            return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
-        }
-        catch
-        {
-            return input;
-        }
-    }
 
     private static void Pause()
     {

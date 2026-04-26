@@ -1,4 +1,4 @@
-namespace SbDlq.Models;
+namespace StoneFlyLabs.Reviver.Models;
 
 public sealed record EntityInfo(
     string DisplayName,
@@ -8,7 +8,7 @@ public sealed record EntityInfo(
 {
     public bool IsQueue => SubscriptionName is null;
 
-    // Path used to send: queues by name, topic/sub by topic name (routing selects sub)
+    // For sending: queues by name, topics by topic name (the subscription receives via subscription filter)
     public string SendPath => QueueOrTopicName;
 
     public override string ToString() => DisplayName;

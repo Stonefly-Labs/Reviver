@@ -1,11 +1,12 @@
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
-using SbDlq.Models;
+using StoneFlyLabs.Reviver.Helpers;
+using StoneFlyLabs.Reviver.Models;
 
-namespace SbDlq.Services;
+namespace StoneFlyLabs.Reviver.Services;
 
-public sealed class ServiceBusService : IAsyncDisposable
+public sealed class ServiceBusService : IServiceBusRepository
 {
     private readonly ServiceBusClient _client;
     private readonly ServiceBusAdministrationClient _adminClient;
@@ -24,14 +25,10 @@ public sealed class ServiceBusService : IAsyncDisposable
     {
         var result = new List<EntityInfo>();
 
-        await foreach (var props in _adminClient.GetQueuesRuntimePropertiesAsync(ct))
+        await foreach (var q in _adminClient.GetQueuesRuntimePropertiesAsync(ct))
         {
-            if (props.DeadLetterMessageCount > 0)
-                result.Add(new EntityInfo(
-                    $"[Q] {props.Name}",
-                    props.Name,
-                    null,
-                    props.DeadLetterMessageCount));
+            if (q.DeadLetterMessageCount > 0)
+                result.Add(new EntityInfo($"[Q] {q.Name}", q.Name, null, q.DeadLetterMessageCount));
         }
 
         await foreach (var topic in _adminClient.GetTopicsAsync(ct))
@@ -54,8 +51,8 @@ public sealed class ServiceBusService : IAsyncDisposable
     {
         var result = new List<EntityInfo>();
 
-        await foreach (var queue in _adminClient.GetQueuesAsync(ct))
-            result.Add(new EntityInfo($"[Q] {queue.Name}", queue.Name, null, 0));
+        await foreach (var q in _adminClient.GetQueuesAsync(ct))
+            result.Add(new EntityInfo($"[Q] {q.Name}", q.Name, null, 0));
 
         await foreach (var topic in _adminClient.GetTopicsAsync(ct))
             result.Add(new EntityInfo($"[T] {topic.Name}", topic.Name, null, 0));
@@ -63,7 +60,25 @@ public sealed class ServiceBusService : IAsyncDisposable
         return result;
     }
 
-    public async Task<DlqSession> OpenDlqSessionAsync(EntityInfo entity, int maxMessages = 20, CancellationToken ct = default)
+    public async Task<List<EntityInfo>> GetAllEntitiesAsync(CancellationToken ct = default)
+    {
+        var result = new List<EntityInfo>();
+
+        await foreach (var q in _adminClient.GetQueuesAsync(ct))
+            result.Add(new EntityInfo($"[Q] {q.Name}", q.Name, null, 0));
+
+        await foreach (var topic in _adminClient.GetTopicsAsync(ct))
+            await foreach (var sub in _adminClient.GetSubscriptionsAsync(topic.Name, ct))
+                result.Add(new EntityInfo(
+                    $"[T] {topic.Name} → {sub.SubscriptionName}",
+                    topic.Name,
+                    sub.SubscriptionName,
+                    0));
+
+        return result;
+    }
+
+    public async Task<IDlqSession> OpenDlqSessionAsync(EntityInfo entity, int maxMessages = 20, CancellationToken ct = default)
     {
         var receiver = entity.IsQueue
             ? _client.CreateReceiver(entity.QueueOrTopicName,
@@ -89,12 +104,12 @@ public sealed class ServiceBusService : IAsyncDisposable
 
         var outMsg = new ServiceBusMessage(BinaryData.FromString(message.Body));
 
-        if (message.ContentType is not null)   outMsg.ContentType      = message.ContentType;
-        if (message.CorrelationId is not null) outMsg.CorrelationId    = message.CorrelationId;
-        if (message.Subject is not null)       outMsg.Subject          = message.Subject;
-        if (message.Raw.To is not null)        outMsg.To               = message.Raw.To;
-        if (message.Raw.ReplyTo is not null)   outMsg.ReplyTo          = message.Raw.ReplyTo;
-        if (message.Raw.SessionId is not null) outMsg.SessionId        = message.Raw.SessionId;
+        if (message.ContentType is not null)   outMsg.ContentType   = message.ContentType;
+        if (message.CorrelationId is not null) outMsg.CorrelationId = message.CorrelationId;
+        if (message.Subject is not null)       outMsg.Subject       = message.Subject;
+        if (message.Raw.To is not null)        outMsg.To            = message.Raw.To;
+        if (message.Raw.ReplyTo is not null)   outMsg.ReplyTo       = message.Raw.ReplyTo;
+        if (message.Raw.SessionId is not null) outMsg.SessionId     = message.Raw.SessionId;
 
         foreach (var (key, value) in message.ApplicationProperties)
             outMsg.ApplicationProperties[key] = value;
@@ -102,16 +117,57 @@ public sealed class ServiceBusService : IAsyncDisposable
         await sender.SendMessageAsync(outMsg, ct);
     }
 
+    public async Task SeedDlqAsync(
+        EntityInfo entity,
+        int count,
+        string payloadTemplate,
+        string dlqReason,
+        IProgress<int>? sendProgress,
+        IProgress<int>? dlqProgress,
+        CancellationToken ct = default)
+    {
+        // Phase 1 — publish messages to the live entity
+        await using var sender = _client.CreateSender(entity.QueueOrTopicName);
+
+        for (var i = 0; i < count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var payload = PayloadTemplate.Expand(payloadTemplate, i);
+            await sender.SendMessageAsync(new ServiceBusMessage(payload), ct);
+            sendProgress?.Report(i + 1);
+        }
+
+        // Phase 2 — receive from the live entity and immediately dead-letter
+        var receiver = entity.IsQueue
+            ? _client.CreateReceiver(entity.QueueOrTopicName)
+            : _client.CreateReceiver(entity.QueueOrTopicName, entity.SubscriptionName!);
+
+        await using (receiver)
+        {
+            var dlqd = 0;
+            while (dlqd < count && !ct.IsCancellationRequested)
+            {
+                var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(10), ct);
+                if (msg is null) break;
+
+                await receiver.DeadLetterMessageAsync(msg, dlqReason, "Seeded via Reviver", ct);
+                dlqd++;
+                dlqProgress?.Report(dlqd);
+            }
+        }
+    }
+
     public async ValueTask DisposeAsync() => await _client.DisposeAsync();
 }
 
-// Represents a live receive session against one DLQ — holds the locked messages and the receiver.
-public sealed class DlqSession : IAsyncDisposable
+// ── DlqSession ───────────────────────────────────────────────────────────────
+
+internal sealed class DlqSession : IDlqSession
 {
     private readonly ServiceBusReceiver _receiver;
 
     public EntityInfo Entity { get; }
-    public List<DlqMessage> Messages { get; }
+    public IReadOnlyList<DlqMessage> Messages { get; }
 
     internal DlqSession(EntityInfo entity, ServiceBusReceiver receiver, List<DlqMessage> messages)
     {
