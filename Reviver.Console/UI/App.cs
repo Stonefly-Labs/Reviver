@@ -11,13 +11,12 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 {
     private IServiceBusRepository? _repo;
 
-    private static readonly EntityInfo RefreshSentinel = new("↩  Refresh",  "__refresh__", null, 0);
-    private static readonly EntityInfo SeedSentinel    = new("⚡ Seed DLQ", "__seed__",    null, 0);
-    private static readonly EntityInfo ExitSentinel    = new("✕  Exit",     "__exit__",    null, 0);
+    private static readonly EntityInfo RefreshSentinel = new("↺  Refresh",   "__refresh__", null, 0);
+    private static readonly EntityInfo SeedSentinel    = new("⚡ Seed DLQ",  "__seed__",    null, 0);
+    private static readonly EntityInfo ExitSentinel    = new("✕  Exit",      "__exit__",    null, 0);
 
     // ── Entry point ───────────────────────────────────────────────────────────
 
-    /// <param name="presetFqdn">Already-normalised FQDN from CLI flag; null prompts the user.</param>
     public async Task RunAsync(string? presetFqdn = null)
     {
         ShowBanner();
@@ -30,15 +29,20 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
             await MainLoopAsync();
         }
 
-        AnsiConsole.MarkupLine("\n[grey]Goodbye.[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[grey]Goodbye[/]").RuleStyle("grey dim"));
+        AnsiConsole.WriteLine();
     }
 
     // ── Banner ────────────────────────────────────────────────────────────────
 
     private static void ShowBanner()
     {
-        AnsiConsole.Write(new FigletText("Reviver").Color(Color.Blue));
-        AnsiConsole.MarkupLine("[grey]StoneFlyLabs · Azure Service Bus DLQ Reconciliation[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new FigletText("Reviver").Color(Color.DeepSkyBlue1));
+        AnsiConsole.Write(
+            new Rule("[deepskyblue1]StoneFlyLabs[/] [grey]· Azure Service Bus DLQ Reconciliation[/]")
+                .RuleStyle("deepskyblue1 dim"));
         AnsiConsole.WriteLine();
     }
 
@@ -48,7 +52,10 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
     {
         var env = Environment.GetEnvironmentVariable("AZURE_SERVICEBUS_NAMESPACE") ?? string.Empty;
 
-        var prompt = new TextPrompt<string>("[blue]Namespace[/] [grey](name or FQDN)[/]:")
+        AnsiConsole.Write(new Rule("[deepskyblue1 dim] Connect [/]").RuleStyle("deepskyblue1 dim"));
+        AnsiConsole.WriteLine();
+
+        var prompt = new TextPrompt<string>("[deepskyblue1]Namespace[/] [grey](name or FQDN)[/]:")
             .Validate(v => string.IsNullOrWhiteSpace(v)
                 ? ValidationResult.Error("Required")
                 : ValidationResult.Success());
@@ -56,6 +63,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         if (!string.IsNullOrWhiteSpace(env))
             prompt.DefaultValue(env);
 
+        AnsiConsole.WriteLine();
         return NamingHelper.NormalizeNamespace(AnsiConsole.Prompt(prompt));
     }
 
@@ -67,15 +75,15 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         {
             AnsiConsole.Clear();
             ShowBanner();
-            AnsiConsole.MarkupLine($"[grey]Namespace:[/] [blue]{_repo!.NamespaceFqdn}[/]\n");
+            AnsiConsole.MarkupLine($"[grey]  Connected:[/] [deepskyblue1 bold]{_repo!.NamespaceFqdn}[/]\n");
 
             List<EntityInfo>? entities = null;
             Exception? loadErr = null;
 
             await AnsiConsole.Status()
-                .Spinner(Spinner.Known.Dots)
-                .SpinnerStyle(Style.Parse("blue"))
-                .StartAsync("Loading entities…", async _ =>
+                .Spinner(Spinner.Known.BouncingBar)
+                .SpinnerStyle(Style.Parse("deepskyblue1"))
+                .StartAsync("[grey]Loading entities…[/]", async _ =>
                 {
                     try   { entities = await _repo.GetEntitiesWithDlqMessagesAsync(); }
                     catch (Exception ex) { loadErr = ex; }
@@ -83,24 +91,25 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
             if (loadErr is not null)
             {
-                AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(loadErr.Message)}");
+                AnsiConsole.MarkupLine($"[red bold]✗ Error:[/] {Markup.Escape(loadErr.Message)}");
                 AnsiConsole.WriteLine();
-                if (!AnsiConsole.Confirm("Retry?")) return;
+                if (!AnsiConsole.Confirm("[grey]Retry?[/]")) return;
                 continue;
             }
 
             if (entities!.Count == 0)
             {
-                AnsiConsole.MarkupLine("[green]✓ No DLQ messages — everything is clean![/]");
-                AnsiConsole.WriteLine();
+                AnsiConsole.Write(new Rule("[green bold] ✓ All Clear [/]").RuleStyle("green"));
+                AnsiConsole.MarkupLine("\n[green]No DLQ messages — everything looks healthy.[/]\n");
 
                 var idle = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
-                        .Title("What now?")
-                        .AddChoices("Refresh", "Seed DLQ", "Exit"));
+                        .Title("[grey]What next?[/]")
+                        .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                        .AddChoices("↺  Refresh", "⚡ Seed DLQ", "✕  Exit"));
 
-                if (idle == "Exit") return;
-                if (idle == "Seed DLQ") await new SeederFlow(_repo).RunAsync();
+                if (idle.StartsWith('✕')) return;
+                if (idle.StartsWith('⚡')) await new SeederFlow(_repo).RunAsync();
                 continue;
             }
 
@@ -108,9 +117,9 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<EntityInfo>()
-                    .Title("Select entity to process:")
+                    .Title("[grey]Select entity to process:[/]")
                     .PageSize(20)
-                    .HighlightStyle(Style.Parse("blue bold"))
+                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
                     .UseConverter(EntityLabel)
                     .AddChoices([.. entities, SeedSentinel, RefreshSentinel, ExitSentinel]));
 
@@ -130,29 +139,46 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
     private static string EntityLabel(EntityInfo e)
     {
-        if (e == SeedSentinel)    return "[yellow]⚡ Seed DLQ[/]";
-        if (e == RefreshSentinel) return "[grey]↩  Refresh[/]";
+        if (e == SeedSentinel)    return "[gold1]⚡ Seed DLQ[/]";
+        if (e == RefreshSentinel) return "[grey]↺  Refresh[/]";
         if (e == ExitSentinel)    return "[grey]✕  Exit[/]";
 
-        var type = e.IsQueue ? "[cyan]Queue[/]" : "[yellow]Topic/Sub[/]";
-        return $"{Markup.Escape(e.DisplayName)}  [grey]({type}[grey] · [/][red]{e.DlqMessageCount}[/][grey] DLQ)[/]";
+        var icon = e.IsQueue ? "[deepskyblue1]≡[/]" : "[gold1]⬡[/]";
+        var countColor = e.DlqMessageCount switch
+        {
+            <= 5  => "yellow",
+            <= 20 => "orange1",
+            _     => "red"
+        };
+        return $"{icon} {Markup.Escape(e.DisplayName)}  [grey]([/][{countColor} bold]{e.DlqMessageCount} DLQ[/][grey])[/]";
     }
 
     private static void RenderEntityTable(List<EntityInfo> entities)
     {
+        var total = entities.Sum(e => e.DlqMessageCount);
+
+        AnsiConsole.MarkupLine(
+            $"  [grey]Found [/][deepskyblue1 bold]{entities.Count}[/]" +
+            $"[grey] entit{(entities.Count == 1 ? "y" : "ies")} · [/]" +
+            $"[red bold]{total}[/][grey] dead-lettered message{(total == 1 ? "" : "s")}[/]\n");
+
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .BorderColor(Color.Blue)
+            .BorderColor(Color.DeepSkyBlue1)
             .AddColumn(new TableColumn("[bold]Entity[/]"))
             .AddColumn(new TableColumn("[bold]Type[/]").Centered())
             .AddColumn(new TableColumn("[bold]DLQ[/]").RightAligned());
 
         foreach (var e in entities)
         {
-            table.AddRow(
-                Markup.Escape(e.DisplayName),
-                e.IsQueue ? "[cyan]Queue[/]" : "[yellow]Topic/Sub[/]",
-                $"[red bold]{e.DlqMessageCount}[/]");
+            var typeLabel = e.IsQueue ? "[deepskyblue1]≡ Queue[/]" : "[gold1]⬡ Topic/Sub[/]";
+            var countLabel = e.DlqMessageCount switch
+            {
+                <= 5  => $"[yellow]{e.DlqMessageCount}[/]",
+                <= 20 => $"[orange1 bold]{e.DlqMessageCount}[/]",
+                _     => $"[red bold]{e.DlqMessageCount}[/]"
+            };
+            table.AddRow(Markup.Escape(e.DisplayName), typeLabel, countLabel);
         }
 
         AnsiConsole.Write(table);
@@ -167,9 +193,9 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         Exception? err = null;
 
         await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .SpinnerStyle(Style.Parse("blue"))
-            .StartAsync($"Receiving from {entity.DisplayName} DLQ…", async _ =>
+            .Spinner(Spinner.Known.BouncingBar)
+            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .StartAsync($"[grey]Receiving from[/] [deepskyblue1]{Markup.Escape(entity.DisplayName)}[/] [grey]DLQ…[/]", async _ =>
             {
                 try   { session = await _repo!.OpenDlqSessionAsync(entity, maxMessages: 20); }
                 catch (Exception ex) { err = ex; }
@@ -177,7 +203,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         if (err is not null)
         {
-            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err.Message)}");
+            AnsiConsole.MarkupLine($"[red bold]✗ Error:[/] {Markup.Escape(err.Message)}");
             Pause();
             return;
         }
@@ -186,7 +212,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         if (s.Messages.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]No messages received (batch empty or held by another consumer).[/]");
+            AnsiConsole.MarkupLine("[yellow]⚠ No messages received — batch empty or held by another consumer.[/]");
             Pause();
             return;
         }
@@ -194,7 +220,6 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         await ProcessBatchAsync(s);
     }
 
-    // Wrapper because SelectionPrompt<T> requires T : notnull
     private sealed record MsgItem(DlqMessage? Message);
 
     private async Task ProcessBatchAsync(IDlqSession session)
@@ -205,14 +230,16 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         while (pending.Count > 0)
         {
             AnsiConsole.Clear();
-            AnsiConsole.MarkupLine($"[blue bold]DLQ:[/] {Markup.Escape(session.Entity.DisplayName)}  " +
-                                   $"[grey]({pending.Count} message(s) in batch)[/]\n");
+            AnsiConsole.Write(
+                new Rule($"[deepskyblue1 bold] ◆ {Markup.Escape(session.Entity.DisplayName)} [/]  [grey]{pending.Count} message(s) in batch[/]")
+                    .RuleStyle("deepskyblue1 dim"));
+            AnsiConsole.WriteLine();
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<MsgItem>()
-                    .Title("Select message:")
+                    .Title("[grey]Select message to inspect:[/]")
                     .PageSize(20)
-                    .HighlightStyle(Style.Parse("blue bold"))
+                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
                     .UseConverter(item => MsgLabel(item.Message))
                     .AddChoices([.. pending.Select(m => new MsgItem(m)), doneItem]));
 
@@ -225,39 +252,45 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
             var msg = choice.Message;
             var action = await ShowMessageDetailAsync(session, msg);
 
-            if (action is MessageAction.Sent or MessageAction.Discarded)
+            if (action is MessageAction.Sent or MessageAction.SentKept or MessageAction.Discarded)
             {
                 pending.Remove(msg);
-                AnsiConsole.MarkupLine(action == MessageAction.Sent
-                    ? "[green]✓ Sent and removed from DLQ.[/]"
-                    : "[yellow]✓ Discarded from DLQ.[/]");
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine(action switch
+                {
+                    MessageAction.Sent     => "[green bold]✓ Sent[/][grey] — removed from DLQ.[/]",
+                    MessageAction.SentKept => "[green bold]✓ Sent[/][grey] — message remains in DLQ (lock will expire).[/]",
+                    _                      => "[yellow bold]✓ Discarded[/][grey] — removed from DLQ.[/]"
+                });
                 await Task.Delay(900);
             }
         }
 
         if (pending.Count == 0)
         {
-            AnsiConsole.MarkupLine("\n[green]✓ Batch complete![/]");
+            AnsiConsole.WriteLine();
+            AnsiConsole.Write(new Rule("[green bold] ✓ Batch Complete [/]").RuleStyle("green"));
             Pause();
         }
     }
 
     private static string MsgLabel(DlqMessage? m)
     {
-        if (m is null) return "[grey]↩  Done (abandon remaining back to DLQ)[/]";
+        if (m is null) return "[grey]↩  Done — release remaining back to DLQ[/]";
 
         var reason = m.DeadLetterReason is not null
-            ? $"  [red]{Markup.Escape(m.DeadLetterReason)}[/]"
+            ? $"  [red]▸ {Markup.Escape(m.DeadLetterReason)}[/]"
             : string.Empty;
 
-        return $"[white]{Markup.Escape(m.MessageId)}[/]  [grey]{m.EnqueuedAt:yyyy-MM-dd HH:mm:ss}[/]{reason}";
+        return $"[white bold]{Markup.Escape(m.MessageId)}[/]  [grey]{m.EnqueuedAt:yyyy-MM-dd HH:mm:ss}[/]{reason}";
     }
 
     private static async Task AbandonAllAsync(IDlqSession session, IEnumerable<DlqMessage> messages)
     {
         await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .StartAsync("Releasing locks…", async _ =>
+            .Spinner(Spinner.Known.BouncingBar)
+            .SpinnerStyle(Style.Parse("grey"))
+            .StartAsync("[grey]Releasing locks…[/]", async _ =>
             {
                 foreach (var m in messages)
                 {
@@ -283,31 +316,33 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
                 var action = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
-                        .Title("Action:")
+                        .Title("[grey]Action:[/]")
                         .PageSize(10)
+                        .HighlightStyle(Style.Parse("deepskyblue1 bold"))
                         .AddChoices(
-                            "Edit Body",
-                            "Edit Application Properties",
-                            "Send to Destination",
-                            "Discard  (complete without resending)",
-                            "Skip  (return to list)"));
+                            "✎  Edit Body",
+                            "✎  Edit Application Properties",
+                            "▶  Send to Destination",
+                            "✗  Discard  (complete without resending)",
+                            "↩  Skip  (return to list)"));
 
                 switch (action)
                 {
-                    case "Edit Body":
+                    case "✎  Edit Body":
                         await EditBodyAsync(message);
                         break;
 
-                    case "Edit Application Properties":
+                    case "✎  Edit Application Properties":
                         EditProperties(message);
                         break;
 
-                    case "Send to Destination":
-                        if (await SendFlowAsync(session, message))
-                            return MessageAction.Sent;
+                    case "▶  Send to Destination":
+                        var (sent, removedFromDlq) = await SendFlowAsync(session, message);
+                        if (sent)
+                            return removedFromDlq ? MessageAction.Sent : MessageAction.SentKept;
                         break;
 
-                    case "Discard  (complete without resending)":
+                    case "✗  Discard  (complete without resending)":
                         if (AnsiConsole.Confirm("[red]Permanently remove from DLQ without resending?[/]"))
                         {
                             await session.CompleteAsync(message);
@@ -315,7 +350,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                         }
                         break;
 
-                    case "Skip  (return to list)":
+                    case "↩  Skip  (return to list)":
                         return MessageAction.Skipped;
                 }
             }
@@ -331,12 +366,12 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
     {
         while (!ct.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(30), ct);
-            if (!ct.IsCancellationRequested)
-            {
-                try { await session.RenewLockAsync(message, ct); }
-                catch { /* expired or cancelled */ }
-            }
+            try { await session.RenewLockAsync(message, ct); }
+            catch (OperationCanceledException) { return; }
+            catch { /* best-effort */ }
+
+            try { await Task.Delay(TimeSpan.FromSeconds(25), ct); }
+            catch (OperationCanceledException) { return; }
         }
     }
 
@@ -344,53 +379,67 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
     private static void RenderMessageDetail(DlqMessage msg)
     {
-        var grid = new Grid().AddColumn().AddColumn();
-        AddRow(grid, "Message ID",  msg.MessageId);
-        AddRow(grid, "Enqueued",    msg.EnqueuedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"));
-        AddRow(grid, "Lock Until",  msg.LockedUntil.ToString("yyyy-MM-dd HH:mm:ss zzz"));
+        var grid = new Grid()
+            .AddColumn(new GridColumn().NoWrap())
+            .AddColumn();
+
+        AddRow(grid, "Message ID",  $"[bold]{Markup.Escape(msg.MessageId)}[/]");
+        AddRow(grid, "Enqueued",    $"[grey]{msg.EnqueuedAt:yyyy-MM-dd HH:mm:ss zzz}[/]");
+        AddRow(grid, "Lock Until",  $"[grey]{msg.LockedUntil:yyyy-MM-dd HH:mm:ss zzz}[/]");
 
         if (msg.DeadLetterReason is not null)
-            AddRow(grid, "DLQ Reason", $"[red]{Markup.Escape(msg.DeadLetterReason)}[/]");
+            AddRow(grid, "DLQ Reason",       $"[red bold]{Markup.Escape(msg.DeadLetterReason)}[/]");
         if (msg.DeadLetterErrorDescription is not null)
-            AddRow(grid, "DLQ Description", $"[red]{Markup.Escape(msg.DeadLetterErrorDescription)}[/]");
+            AddRow(grid, "DLQ Description",  $"[red]{Markup.Escape(msg.DeadLetterErrorDescription)}[/]");
         if (msg.ContentType is not null)
-            AddRow(grid, "Content-Type", msg.ContentType);
+            AddRow(grid, "Content-Type",     $"[grey]{Markup.Escape(msg.ContentType)}[/]");
         if (msg.Subject is not null)
-            AddRow(grid, "Subject", msg.Subject);
+            AddRow(grid, "Subject",          Markup.Escape(msg.Subject));
         if (msg.CorrelationId is not null)
-            AddRow(grid, "Correlation ID", msg.CorrelationId);
+            AddRow(grid, "Correlation ID",   $"[grey]{Markup.Escape(msg.CorrelationId)}[/]");
 
         AnsiConsole.Write(new Panel(grid)
-            .Header("[blue bold] Message [/]")
-            .Border(BoxBorder.Rounded));
+            .Header("[deepskyblue1 bold] ◆ Message Details [/]")
+            .Border(BoxBorder.Rounded)
+            .BorderColor(Color.DeepSkyBlue1)
+            .Padding(1, 0));
 
-        var bodyText = JsonHelper.TryFormat(msg.Body);
-        var display  = bodyText.Length > 3000 ? bodyText[..3000] + "\n[grey]… (truncated)[/]" : bodyText;
+        var bodyText  = JsonHelper.TryFormat(msg.Body);
+        var isJson    = JsonHelper.IsValid(msg.Body, out _);
+        var bodyTitle = isJson ? "[deepskyblue1 bold] ◆ Body · JSON [/]" : "[deepskyblue1 bold] ◆ Body [/]";
+        var display   = bodyText.Length > 3000 ? bodyText[..3000] + "\n[grey]… (truncated)[/]" : bodyText;
 
         AnsiConsole.Write(new Panel(new Markup(Markup.Escape(display)))
-            .Header("[blue bold] Body [/]")
-            .Border(BoxBorder.Rounded));
+            .Header(bodyTitle)
+            .Border(BoxBorder.Rounded)
+            .BorderColor(Color.DeepSkyBlue1)
+            .Padding(1, 0));
 
         if (msg.ApplicationProperties.Count > 0)
         {
             var propTable = new Table()
                 .Border(TableBorder.Simple)
+                .BorderColor(Color.Grey)
                 .AddColumn(new TableColumn("[bold]Key[/]"))
                 .AddColumn(new TableColumn("[bold]Value[/]"));
 
             foreach (var (k, v) in msg.ApplicationProperties)
-                propTable.AddRow(Markup.Escape(k), Markup.Escape(v?.ToString() ?? "(null)"));
+                propTable.AddRow(
+                    $"[deepskyblue1]{Markup.Escape(k)}[/]",
+                    Markup.Escape(v?.ToString() ?? "[grey](null)[/]"));
 
             AnsiConsole.Write(new Panel(propTable)
-                .Header("[blue bold] Application Properties [/]")
-                .Border(BoxBorder.Rounded));
+                .Header("[deepskyblue1 bold] ◆ Application Properties [/]")
+                .Border(BoxBorder.Rounded)
+                .BorderColor(Color.DeepSkyBlue1)
+                .Padding(1, 0));
         }
 
         AnsiConsole.WriteLine();
     }
 
     private static void AddRow(Grid grid, string label, string value)
-        => grid.AddRow($"[bold]{label}[/]", value);
+        => grid.AddRow($"[grey]{label}[/]", value);
 
     // ── Body editor ───────────────────────────────────────────────────────────
 
@@ -419,7 +468,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
             if (string.IsNullOrWhiteSpace(updated))
             {
-                AnsiConsole.MarkupLine("[yellow]Body is empty — keeping original.[/]");
+                AnsiConsole.MarkupLine("[yellow]⚠ Body is empty — keeping original.[/]");
                 Pause();
                 return;
             }
@@ -427,17 +476,17 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
             if ((updated.StartsWith('{') || updated.StartsWith('[')) &&
                 !JsonHelper.IsValid(updated, out var jsonErr))
             {
-                AnsiConsole.MarkupLine($"[yellow]Warning:[/] Invalid JSON — {Markup.Escape(jsonErr)}");
+                AnsiConsole.MarkupLine($"[yellow]⚠ Invalid JSON:[/] {Markup.Escape(jsonErr)}");
                 if (!AnsiConsole.Confirm("Use it anyway?")) return;
             }
 
             message.Body = updated;
-            AnsiConsole.MarkupLine("[green]✓ Body updated.[/]");
+            AnsiConsole.MarkupLine("[green bold]✓ Body updated.[/]");
             await Task.Delay(700);
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+            AnsiConsole.MarkupLine($"[red bold]✗ Error:[/] {Markup.Escape(ex.Message)}");
             Pause();
         }
         finally
@@ -453,51 +502,57 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         while (true)
         {
             AnsiConsole.Clear();
-            AnsiConsole.Write(new Rule("[blue bold] Application Properties [/]").RuleStyle("blue"));
+            AnsiConsole.Write(
+                new Rule("[deepskyblue1 bold] ◆ Application Properties [/]")
+                    .RuleStyle("deepskyblue1 dim"));
             AnsiConsole.WriteLine();
 
             if (message.ApplicationProperties.Count > 0)
             {
                 var t = new Table()
                     .Border(TableBorder.Rounded)
-                    .BorderColor(Color.Blue)
+                    .BorderColor(Color.DeepSkyBlue1)
                     .AddColumn(new TableColumn("[bold]Key[/]"))
                     .AddColumn(new TableColumn("[bold]Value[/]"));
 
                 foreach (var (k, v) in message.ApplicationProperties)
-                    t.AddRow(Markup.Escape(k), Markup.Escape(v?.ToString() ?? "(null)"));
+                    t.AddRow(
+                        $"[deepskyblue1]{Markup.Escape(k)}[/]",
+                        Markup.Escape(v?.ToString() ?? "[grey](null)[/]"));
 
                 AnsiConsole.Write(t);
             }
             else
             {
-                AnsiConsole.MarkupLine("[grey](none)[/]");
+                AnsiConsole.MarkupLine("[grey]  (none)[/]");
             }
 
             AnsiConsole.WriteLine();
 
             var action = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
-                    .Title("Action:")
-                    .AddChoices("Add / Edit property", "Remove property", "↩  Done"));
+                    .Title("[grey]Action:[/]")
+                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                    .AddChoices("✎  Add / Edit property", "✗  Remove property", "↩  Done"));
 
             switch (action)
             {
-                case "Add / Edit property":
-                    var key = AnsiConsole.Ask<string>("Key:");
-                    var val = AnsiConsole.Ask<string>("Value:");
+                case "✎  Add / Edit property":
+                    var key = AnsiConsole.Ask<string>("[deepskyblue1]Key:[/]");
+                    var val = AnsiConsole.Ask<string>("[deepskyblue1]Value:[/]");
                     message.ApplicationProperties[key] = val;
                     break;
 
-                case "Remove property":
+                case "✗  Remove property":
                     if (message.ApplicationProperties.Count == 0)
                     {
-                        AnsiConsole.MarkupLine("[yellow]Nothing to remove.[/]");
+                        AnsiConsole.MarkupLine("[yellow]⚠ Nothing to remove.[/]");
                         break;
                     }
                     var toRemove = AnsiConsole.Prompt(
                         new SelectionPrompt<string>()
-                            .Title("Remove which property?")
+                            .Title("[grey]Remove which property?[/]")
+                            .HighlightStyle(Style.Parse("red bold"))
                             .AddChoices(message.ApplicationProperties.Keys));
                     message.ApplicationProperties.Remove(toRemove);
                     break;
@@ -510,14 +565,15 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
     // ── Send flow ─────────────────────────────────────────────────────────────
 
-    private async Task<bool> SendFlowAsync(IDlqSession session, DlqMessage message)
+    private async Task<(bool Success, bool RemovedFromDlq)> SendFlowAsync(IDlqSession session, DlqMessage message)
     {
         List<EntityInfo>? destinations = null;
         Exception? err = null;
 
         await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .StartAsync("Loading destinations…", async _ =>
+            .Spinner(Spinner.Known.BouncingBar)
+            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .StartAsync("[grey]Loading destinations…[/]", async _ =>
             {
                 try   { destinations = await _repo!.GetAllSendDestinationsAsync(); }
                 catch (Exception ex) { err = ex; }
@@ -525,19 +581,18 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         if (err is not null)
         {
-            AnsiConsole.MarkupLine($"[red]Error loading destinations:[/] {Markup.Escape(err.Message)}");
+            AnsiConsole.MarkupLine($"[red bold]✗ Error loading destinations:[/] {Markup.Escape(err.Message)}");
             Pause();
-            return false;
+            return (false, false);
         }
 
         if (destinations is null || destinations.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]No destinations found.[/]");
+            AnsiConsole.MarkupLine("[red bold]✗ No destinations found.[/]");
             Pause();
-            return false;
+            return (false, false);
         }
 
-        // Bubble the originating source to top
         var defaultDest = destinations.FirstOrDefault(d => d.QueueOrTopicName == session.Entity.SendPath);
         if (defaultDest is not null)
         {
@@ -547,50 +602,79 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         var dest = AnsiConsole.Prompt(
             new SelectionPrompt<EntityInfo>()
-                .Title("Send to:")
+                .Title("[grey]Send to:[/]")
                 .PageSize(25)
                 .HighlightStyle(Style.Parse("green bold"))
                 .UseConverter(e =>
                 {
                     var label = Markup.Escape(e.DisplayName);
                     return defaultDest is not null && e == defaultDest
-                        ? $"[green]{label}[/]  [grey](original source — default)[/]"
+                        ? $"[green bold]{label}[/]  [grey](original source)[/]"
                         : label;
                 })
                 .AddChoices(destinations));
 
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"Destination: [green bold]{Markup.Escape(dest.DisplayName)}[/]");
+        AnsiConsole.MarkupLine($"[grey]Destination:[/] [green bold]{Markup.Escape(dest.DisplayName)}[/]");
+        AnsiConsole.WriteLine();
 
-        if (!AnsiConsole.Confirm("Confirm send?"))
-            return false;
+        var confirm = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[grey]Confirm action:[/]")
+                .HighlightStyle(Style.Parse("green bold"))
+                .AddChoices(
+                    "▶  Send and remove from DLQ",
+                    "▶  Send and keep in DLQ",
+                    "✕  Cancel"));
 
-        bool success = false;
+        if (confirm.StartsWith('✕'))
+            return (false, false);
+
+        var removeDlq     = confirm.Contains("remove");
+        bool sendOk       = false;
+        bool completeOk   = false;
+        Exception? sendErr     = null;
+        Exception? completeErr = null;
 
         await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
+            .Spinner(Spinner.Known.BouncingBar)
             .SpinnerStyle(Style.Parse("green"))
-            .StartAsync("Sending…", async _ =>
+            .StartAsync("[grey]Sending…[/]", async _ =>
             {
                 try
                 {
                     await _repo!.SendMessageAsync(dest.SendPath, message);
-                    await session.CompleteAsync(message);
-                    success = true;
+                    sendOk = true;
                 }
-                catch (Exception ex)
+                catch (Exception ex) { sendErr = ex; }
+
+                if (sendOk && removeDlq)
                 {
-                    err = ex;
+                    try
+                    {
+                        await session.CompleteAsync(message);
+                        completeOk = true;
+                    }
+                    catch (Exception ex) { completeErr = ex; }
                 }
             });
 
-        if (err is not null)
+        if (sendErr is not null)
         {
-            AnsiConsole.MarkupLine($"[red]Send failed:[/] {Markup.Escape(err.Message)}");
+            AnsiConsole.MarkupLine($"[red bold]✗ Send failed:[/] {Markup.Escape(sendErr.Message)}");
             Pause();
+            return (false, false);
         }
 
-        return success;
+        if (completeErr is not null)
+        {
+            AnsiConsole.MarkupLine("[yellow]⚠ Message sent — but the DLQ lock expired before it could be removed.[/]");
+            AnsiConsole.MarkupLine("[grey]  It will re-appear in the DLQ once the lock expires.[/]");
+            Pause();
+            return (true, false);
+        }
+
+        return (true, removeDlq && completeOk);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -604,4 +688,4 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
     }
 }
 
-internal enum MessageAction { Sent, Discarded, Skipped }
+internal enum MessageAction { Sent, SentKept, Discarded, Skipped }
