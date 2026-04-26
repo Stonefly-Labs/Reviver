@@ -8,6 +8,15 @@
         <AssemblyName>reviver</AssemblyName>
         <RootNamespace>StoneFlyLabs.Reviver.Console</RootNamespace>
         <Version>1.0.0</Version>
+
+        <!-- Global tool packaging -->
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>reviver</ToolCommandName>
+        <PackageId>StoneFlyLabs.Reviver</PackageId>
+        <Description>Interactive TUI for triaging and reprocessing Azure Service Bus dead-letter queues.</Description>
+        <Authors>StoneFlyLabs</Authors>
+        <PackageTags>azure;servicebus;dlq;tui;devops</PackageTags>
+        <PackageOutputPath>./nupkg</PackageOutputPath>
     </PropertyGroup>
 
     <ItemGroup>

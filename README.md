@@ -24,11 +24,40 @@ Reviver connects to an Azure Service Bus namespace, lists every queue and topic 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - Azure CLI — run `az login` before starting; Reviver authenticates with your CLI credential
 
+## Installation
+
+### From NuGet
+
+```bash
+dotnet tool install -g StoneFlyLabs.Reviver
+```
+
+### From source
+
+```bash
+git clone <repo>
+cd Reviver
+dotnet pack Reviver.Console/Reviver.Console.csproj -c Release
+dotnet tool install -g StoneFlyLabs.Reviver --add-source Reviver.Console/nupkg
+```
+
+To update an existing installation:
+
+```bash
+dotnet tool update -g StoneFlyLabs.Reviver
+```
+
+To uninstall:
+
+```bash
+dotnet tool uninstall -g StoneFlyLabs.Reviver
+```
+
 ## Quick start
 
 ```bash
 az login
-dotnet run --project Reviver.Console/Reviver.Console.csproj
+reviver
 ```
 
 You'll be prompted for a namespace name or FQDN. Short names are expanded automatically:
@@ -43,10 +72,10 @@ my-namespace  →  my-namespace.servicebus.windows.net
 
 ```bash
 # Launch and prompt for namespace
-dotnet run --project Reviver.Console/Reviver.Console.csproj
+reviver
 
 # Pre-fill namespace, skip the prompt
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- -n my-namespace
+reviver -n my-namespace
 ```
 
 The TUI shows a table of all entities that have DLQ messages. Select one to receive a batch (up to 20), then pick a message to inspect. From the message detail screen you can:
@@ -63,13 +92,13 @@ The TUI shows a table of all entities that have DLQ messages. Select one to rece
 
 ```bash
 # Seed 50 messages into the "orders" queue DLQ
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- seed orders -n my-namespace -c 50 -r "LoadTest"
+reviver seed orders -n my-namespace -c 50 -r "LoadTest"
 
 # Seed into a topic subscription
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- seed events/payments -n my-namespace -c 10
+reviver seed events/payments -n my-namespace -c 10
 
 # Custom payload template
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- seed orders -n my-namespace -p '{"id":"{guid}","seq":{index}}'
+reviver seed orders -n my-namespace -p '{"id":"{guid}","seq":{index}}'
 ```
 
 Payload template placeholders: `{index}`, `{timestamp}`, `{guid}`.
@@ -77,7 +106,7 @@ Payload template placeholders: `{index}`, `{timestamp}`, `{guid}`.
 ### Version
 
 ```bash
-dotnet run --project Reviver.Console/Reviver.Console.csproj -- version
+reviver version
 ```
 
 ## Configuration
@@ -110,14 +139,15 @@ StoneFlyLabs.Reviver.sln
 # Build
 dotnet build
 
+# Run without installing
+dotnet run --project Reviver.Console/Reviver.Console.csproj
+
 # Run all tests
 dotnet test
 
 # Run a specific test class
 dotnet test Reviver.Tests/Reviver.Tests.csproj --filter "FullyQualifiedName~NamingHelperTests"
 
-# Run a single test
-dotnet test Reviver.Tests/Reviver.Tests.csproj --filter "FullyQualifiedName~NamingHelperTests.NormalizeNamespace_ReturnsExpectedFqdn"
+# Pack
+dotnet pack Reviver.Console/Reviver.Console.csproj -c Release
 ```
-
-Tests cover the pure helpers directly and use `NSubstitute` mocks of `IServiceBusRepository` for orchestration tests. `ServiceBusReceivedMessage` is a sealed Azure SDK type — create test instances via `ServiceBusModelFactory.ServiceBusReceivedMessage(...)`.

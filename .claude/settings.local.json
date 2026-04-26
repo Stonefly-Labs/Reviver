@@ -5,7 +5,8 @@
       "Bash(dotnet build *)",
       "Bash(dotnet sln *)",
       "Bash(dotnet test *)",
-      "Bash(dotnet run *)"
+      "Bash(dotnet run *)",
+      "Bash(dotnet pack *)"
     ]
   }
 }

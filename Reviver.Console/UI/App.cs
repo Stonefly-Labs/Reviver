@@ -107,7 +107,6 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                         .Title("[grey]What next?[/]")
                         .HighlightStyle(Style.Parse("deepskyblue1 bold"))
                         .AddChoices("↺  Refresh", "⚡ Seed DLQ", "✕  Exit"));
-
                 if (idle.StartsWith('✕')) return;
                 if (idle.StartsWith('⚡')) await new SeederFlow(_repo).RunAsync();
                 continue;
