@@ -1,5 +1,9 @@
 # Reviver
 
+<p align="center">
+  <img src="assets/reviver_logo_pulse.svg" alt="Reviver logo" width="680"/>
+</p>
+
 **Interactive TUI for triaging and reprocessing Azure Service Bus dead-letter queues.**
 
 <!-- README last reviewed: 2026-04-26 -->
