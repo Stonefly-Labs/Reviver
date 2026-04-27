@@ -403,9 +403,14 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
             .BorderColor(Color.DeepSkyBlue1)
             .Padding(1, 0));
 
-        var bodyText  = JsonHelper.TryFormat(msg.Body);
-        var isJson    = JsonHelper.IsValid(msg.Body, out _);
-        var bodyTitle = isJson ? "[deepskyblue1 bold] ◆ Body · JSON [/]" : "[deepskyblue1 bold] ◆ Body [/]";
+        var isJson = JsonHelper.IsValid(msg.Body, out _);
+        var isXml  = !isJson && XmlHelper.IsValid(msg.Body, out _);
+        var bodyText  = isJson ? JsonHelper.TryFormat(msg.Body)
+                      : isXml  ? XmlHelper.TryFormat(msg.Body)
+                      : msg.Body;
+        var bodyTitle = isJson ? "[deepskyblue1 bold] ◆ Body · JSON [/]"
+                      : isXml  ? "[deepskyblue1 bold] ◆ Body · XML [/]"
+                      : "[deepskyblue1 bold] ◆ Body [/]";
         var display   = bodyText.Length > 3000 ? bodyText[..3000] + "\n[grey]… (truncated)[/]" : bodyText;
 
         AnsiConsole.Write(new Panel(new Markup(Markup.Escape(display)))
@@ -444,11 +449,17 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
     private static async Task EditBodyAsync(DlqMessage message)
     {
-        var tempFile = Path.Combine(Path.GetTempPath(), $"reviver-{message.MessageId}.json");
+        var isJson   = JsonHelper.IsValid(message.Body, out _);
+        var isXml    = !isJson && XmlHelper.IsValid(message.Body, out _);
+        var ext      = isJson ? ".json" : isXml ? ".xml" : ".txt";
+        var tempFile = Path.Combine(Path.GetTempPath(), $"reviver-{message.MessageId}{ext}");
 
         try
         {
-            await File.WriteAllTextAsync(tempFile, JsonHelper.TryFormat(message.Body));
+            var formatted = isJson ? JsonHelper.TryFormat(message.Body)
+                          : isXml  ? XmlHelper.TryFormat(message.Body)
+                          : message.Body;
+            await File.WriteAllTextAsync(tempFile, formatted);
 
             var editor = Environment.GetEnvironmentVariable("EDITOR")
                 ?? (OperatingSystem.IsWindows() ? "notepad.exe" : "nano");
@@ -472,10 +483,17 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                 return;
             }
 
-            if ((updated.StartsWith('{') || updated.StartsWith('[')) &&
+            var trimmed = updated.TrimStart();
+            if ((trimmed.StartsWith('{') || trimmed.StartsWith('[')) &&
                 !JsonHelper.IsValid(updated, out var jsonErr))
             {
                 AnsiConsole.MarkupLine($"[yellow]⚠ Invalid JSON:[/] {Markup.Escape(jsonErr)}");
+                if (!AnsiConsole.Confirm("Use it anyway?")) return;
+            }
+            else if (trimmed.StartsWith('<') &&
+                !XmlHelper.IsValid(updated, out var xmlErr))
+            {
+                AnsiConsole.MarkupLine($"[yellow]⚠ Invalid XML:[/] {Markup.Escape(xmlErr)}");
                 if (!AnsiConsole.Confirm("Use it anyway?")) return;
             }
 
