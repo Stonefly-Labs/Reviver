@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - 'v*.*.*'
+  pull_request:
+
+jobs:
+  # ── Test (matrix) ─────────────────────────────────────────────────────────────
+  test:
+    name: Test / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release
+
+  # ── Publish to NuGet ──────────────────────────────────────────────────────────
+  publish:
+    name: Publish to NuGet
+    needs: test
+    # Only on push events (not PRs), and only for tag pushes or pushes to dev
+    if: >
+      github.event_name == 'push' &&
+      (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/dev')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      # Strip leading 'v' from the tag (v1.2.3 → 1.2.3)
+      - name: Compute version (tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "PACKAGE_VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
+
+      # Read VersionPrefix from the csproj and append -beta.<run_number>
+      - name: Compute version (dev push)
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          VP=$(sed -n 's/.*<VersionPrefix>\(.*\)<\/VersionPrefix>.*/\1/p' Reviver.Console/Reviver.Console.csproj)
+          echo "PACKAGE_VERSION=${VP}-beta.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Pack
+        run: |
+          dotnet pack Reviver.Console/Reviver.Console.csproj \
+            -c Release \
+            -p:Version=${{ env.PACKAGE_VERSION }} \
+            -o ./nupkg
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push "./nupkg/*.nupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+          dotnet nuget push "./nupkg/*.snupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
