@@ -1,6 +1,6 @@
-using StoneFlyLabs.Reviver.Models;
+using StoneFlyLabs.Reviver.Console.Models;
 
-namespace StoneFlyLabs.Reviver.Services;
+namespace StoneFlyLabs.Reviver.Console.Services;
 
 public interface IServiceBusRepository : IAsyncDisposable
 {

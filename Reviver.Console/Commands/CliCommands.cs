@@ -1,12 +1,12 @@
 using Cocona;
 using System.ComponentModel;
-using StoneFlyLabs.Reviver.Helpers;
-using StoneFlyLabs.Reviver.Models;
-using StoneFlyLabs.Reviver.Services;
-using StoneFlyLabs.Reviver.UI;
+using StoneFlyLabs.Reviver.Console.Helpers;
+using StoneFlyLabs.Reviver.Console.Models;
+using StoneFlyLabs.Reviver.Console.Services;
+using StoneFlyLabs.Reviver.Console.UI;
 using Spectre.Console;
 
-namespace StoneFlyLabs.Reviver.Commands;
+namespace StoneFlyLabs.Reviver.Console.Commands;
 
 public sealed class CliCommands
 {

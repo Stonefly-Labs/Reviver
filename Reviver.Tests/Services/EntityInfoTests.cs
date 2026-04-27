@@ -1,4 +1,4 @@
-using StoneFlyLabs.Reviver.Models;
+using StoneFlyLabs.Reviver.Console.Models;
 
 namespace StoneFlyLabs.Reviver.Tests.Services;
 

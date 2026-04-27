@@ -1,4 +1,4 @@
-using StoneFlyLabs.Reviver.Helpers;
+using StoneFlyLabs.Reviver.Console.Helpers;
 
 namespace StoneFlyLabs.Reviver.Tests.Helpers;
 

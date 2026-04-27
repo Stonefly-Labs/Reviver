@@ -1,11 +1,11 @@
 using System.Diagnostics;
-using StoneFlyLabs.Reviver.Commands;
-using StoneFlyLabs.Reviver.Helpers;
-using StoneFlyLabs.Reviver.Models;
-using StoneFlyLabs.Reviver.Services;
+using StoneFlyLabs.Reviver.Console.Commands;
+using StoneFlyLabs.Reviver.Console.Helpers;
+using StoneFlyLabs.Reviver.Console.Models;
+using StoneFlyLabs.Reviver.Console.Services;
 using Spectre.Console;
 
-namespace StoneFlyLabs.Reviver.UI;
+namespace StoneFlyLabs.Reviver.Console.UI;
 
 public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 {
@@ -21,7 +21,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
     {
         ShowBanner();
 
-        var fqdn = presetFqdn ?? PromptNamespace();
+        var fqdn = presetFqdn ?? await PromptNamespaceAsync();
         _repo = repoFactory(fqdn);
 
         await using (_repo)
@@ -48,23 +48,156 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
     // ── Namespace prompt ──────────────────────────────────────────────────────
 
-    private static string PromptNamespace()
+    private const string ChoiceManual = "✎  Enter namespace manually…";
+    private const string ChoiceSwitchSub = "⟳  Switch Azure subscription…";
+
+    private static async Task<string> PromptNamespaceAsync()
     {
         var env = Environment.GetEnvironmentVariable("AZURE_SERVICEBUS_NAMESPACE") ?? string.Empty;
 
-        AnsiConsole.Write(new Rule("[deepskyblue1 dim] Connect [/]").RuleStyle("deepskyblue1 dim"));
-        AnsiConsole.WriteLine();
+        while (true)
+        {
+            AnsiConsole.Write(new Rule("[deepskyblue1 dim] Connect [/]").RuleStyle("deepskyblue1 dim"));
+            AnsiConsole.WriteLine();
 
-        var prompt = new TextPrompt<string>("[deepskyblue1]Namespace[/] [grey](name or FQDN)[/]:")
-            .Validate(v => string.IsNullOrWhiteSpace(v)
-                ? ValidationResult.Error("Required")
-                : ValidationResult.Success());
+            Helpers.AzureSubscription? currentSub = null;
+            List<string>? discovered = null;
 
-        if (!string.IsNullOrWhiteSpace(env))
-            prompt.DefaultValue(env);
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.BouncingBar)
+                .SpinnerStyle(Style.Parse("deepskyblue1"))
+                .StartAsync("[grey]Discovering namespaces…[/]", async _ =>
+                {
+                    currentSub = await Helpers.AzureCliHelper.GetCurrentSubscriptionAsync();
+                    discovered = await Helpers.AzureCliHelper.GetServiceBusNamespacesAsync();
+                });
 
-        AnsiConsole.WriteLine();
-        return NamingHelper.NormalizeNamespace(AnsiConsole.Prompt(prompt));
+            if (currentSub is not null)
+            {
+                AnsiConsole.MarkupLine(
+                    $"  [grey]Subscription:[/] [bold]{Markup.Escape(currentSub.Name)}[/]" +
+                    $"  [grey dim]{currentSub.Id}[/]");
+                AnsiConsole.WriteLine();
+            }
+
+            var choices = new List<string>();
+
+            if (discovered?.Count > 0)
+                choices.AddRange(discovered);
+
+            if (!string.IsNullOrWhiteSpace(env) && !choices.Contains(env))
+                choices.Insert(0, NamingHelper.NormalizeNamespace(env));
+
+            choices.Add(ChoiceManual);
+            choices.Add(ChoiceSwitchSub);
+
+            var selection = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title(discovered?.Count > 0
+                        ? "[grey]Select namespace:[/]"
+                        : "[grey]No namespaces found in this subscription — enter one manually or switch subscriptions:[/]")
+                    .PageSize(20)
+                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                    .UseConverter(c => c switch
+                    {
+                        ChoiceManual    => "[grey]✎  Enter namespace manually…[/]",
+                        ChoiceSwitchSub => "[grey]⟳  Switch Azure subscription…[/]",
+                        _               => $"[deepskyblue1]{Markup.Escape(c)}[/]"
+                    })
+                    .AddChoices(choices));
+
+            if (selection == ChoiceSwitchSub)
+            {
+                await SwitchSubscriptionAsync();
+                AnsiConsole.Clear();
+                ShowBanner();
+                continue;
+            }
+
+            if (selection == ChoiceManual)
+            {
+                var prompt = new TextPrompt<string>("[deepskyblue1]Namespace[/] [grey](name or FQDN)[/]:")
+                    .Validate(v => string.IsNullOrWhiteSpace(v)
+                        ? ValidationResult.Error("Required")
+                        : ValidationResult.Success());
+
+                if (!string.IsNullOrWhiteSpace(env))
+                    prompt.DefaultValue(env);
+
+                AnsiConsole.WriteLine();
+                return NamingHelper.NormalizeNamespace(AnsiConsole.Prompt(prompt));
+            }
+
+            return NamingHelper.NormalizeNamespace(selection);
+        }
+    }
+
+    private static async Task SwitchSubscriptionAsync()
+    {
+        List<Helpers.AzureSubscription>? subs = null;
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.BouncingBar)
+            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .StartAsync("[grey]Loading subscriptions…[/]", async _ =>
+            {
+                subs = await Helpers.AzureCliHelper.GetSubscriptionsAsync();
+            });
+
+        if (subs is null || subs.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]✗ No subscriptions found. Are you logged in? Run [bold]az login[/] first.[/]");
+            Pause();
+            return;
+        }
+
+        var current = subs.FirstOrDefault(s => s.IsDefault);
+        if (current is not null)
+        {
+            subs.Remove(current);
+            subs.Insert(0, current);
+        }
+
+        var sub = AnsiConsole.Prompt(
+            new SelectionPrompt<Helpers.AzureSubscription>()
+                .Title("[grey]Select subscription:[/]")
+                .PageSize(20)
+                .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                .UseConverter(s =>
+                {
+                    var label = $"{Markup.Escape(s.Name)}  [grey dim]{s.Id}[/]";
+                    var stateTag = s.State != "Enabled" ? $"  [red dim]{Markup.Escape(s.State)}[/]" : string.Empty;
+                    var currentTag = s.IsDefault ? "  [deepskyblue1](current)[/]" : string.Empty;
+                    return $"{label}{currentTag}{stateTag}";
+                })
+                .AddChoices(subs));
+
+        if (sub.IsDefault)
+        {
+            AnsiConsole.MarkupLine($"[grey]Already on [bold]{Markup.Escape(sub.Name)}[/] — no change.[/]");
+            await Task.Delay(700);
+            return;
+        }
+
+        bool ok = false;
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.BouncingBar)
+            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .StartAsync("[grey]Switching subscription…[/]", async _ =>
+            {
+                ok = await Helpers.AzureCliHelper.SetSubscriptionAsync(sub.Id);
+            });
+
+        if (ok)
+        {
+            AnsiConsole.MarkupLine($"[green bold]✓ Switched to:[/] [bold]{Markup.Escape(sub.Name)}[/]");
+            await Task.Delay(800);
+        }
+        else
+        {
+            AnsiConsole.MarkupLine("[red]✗ Failed to switch subscription.[/]");
+            Pause();
+        }
     }
 
     // ── Main entity-list loop ─────────────────────────────────────────────────
