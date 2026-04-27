@@ -29,7 +29,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <None Include="..\README.md" Pack="true" PackagePath="\" />
+        <!-- PackagePath="" = package root; avoids backslash issues on Linux CI -->
+        <None Include="..\README.md" Pack="true" PackagePath="" />
     </ItemGroup>
 
     <ItemGroup>
