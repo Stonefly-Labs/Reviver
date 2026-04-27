@@ -1,4 +1,4 @@
-namespace StoneFlyLabs.Reviver.Models;
+namespace StoneFlyLabs.Reviver.Console.Models;
 
 public sealed record EntityInfo(
     string DisplayName,

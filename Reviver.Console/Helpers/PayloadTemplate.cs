@@ -1,4 +1,4 @@
-namespace StoneFlyLabs.Reviver.Helpers;
+namespace StoneFlyLabs.Reviver.Console.Helpers;
 
 public static class PayloadTemplate
 {

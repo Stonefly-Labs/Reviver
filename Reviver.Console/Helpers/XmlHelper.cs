@@ -1,7 +1,7 @@
 using System.Xml;
 using System.Xml.Linq;
 
-namespace StoneFlyLabs.Reviver.Helpers;
+namespace StoneFlyLabs.Reviver.Console.Helpers;
 
 public static class XmlHelper
 {

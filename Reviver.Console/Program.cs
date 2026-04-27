@@ -1,7 +1,7 @@
 using Cocona;
-using StoneFlyLabs.Reviver.Commands;
+using StoneFlyLabs.Reviver.Console.Commands;
 
-namespace StoneFlyLabs.Reviver;
+namespace StoneFlyLabs.Reviver.Console;
 
 internal sealed class Program
 {
