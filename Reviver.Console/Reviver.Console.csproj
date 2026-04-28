@@ -17,6 +17,7 @@
         <Authors>StoneFlyLabs</Authors>
         <PackageTags>azure;servicebus;dlq;tui;devops</PackageTags>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <PackageIcon>reviver-package-icon.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/christopherhouse/Reviver</RepositoryUrl>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -31,6 +32,7 @@
     <ItemGroup>
         <!-- PackagePath="" = package root; avoids backslash issues on Linux CI -->
         <None Include="..\README.md" Pack="true" PackagePath="" />
+        <None Include="..\assets\reviver-package-icon.png" Pack="true" PackagePath="" />
     </ItemGroup>
 
     <ItemGroup>
