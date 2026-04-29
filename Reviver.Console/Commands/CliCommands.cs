@@ -106,7 +106,7 @@ public sealed class CliCommands
         AnsiConsole.Write(new FigletText("Reviver").Color(Color.Blue));
         AnsiConsole.MarkupLine($"[bold]Version:[/] [blue]{ver}[/]");
         AnsiConsole.MarkupLine($"[bold]Runtime:[/] {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-        AnsiConsole.MarkupLine($"[bold]Purpose:[/] StoneFlyLabs · Azure Service Bus DLQ Reconciliation");
+        AnsiConsole.MarkupLine($"[bold]Purpose:[/] StoneflyLabs · Azure Service Bus DLQ Reconciliation");
         AnsiConsole.MarkupLine($"[bold]Auth:[/]    Azure CLI credential ([grey]az login[/])");
     }
 

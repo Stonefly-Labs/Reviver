@@ -39,10 +39,22 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
     private static void ShowBanner()
     {
         AnsiConsole.WriteLine();
-        AnsiConsole.Write(new FigletText("Reviver").Color(Color.DeepSkyBlue1));
+
         AnsiConsole.Write(
-            new Rule("[deepskyblue1]StoneFlyLabs[/] [grey]· Azure Service Bus DLQ Reconciliation[/]")
-                .RuleStyle("deepskyblue1 dim"));
+            new Panel(
+                new Markup(
+                    "          [yellow]/\\[/]\n" +
+                    "[dim]>_[/] [yellow]______/  \\    ________[/]\n" +
+                    "             [yellow]\\  /[/]\n" +
+                    "              [yellow]\\/[/]"))
+                .Border(BoxBorder.Rounded)
+                .BorderColor(Color.Green)
+                .Padding(2, 0));
+
+        AnsiConsole.Write(new FigletText("Reviver").Color(Color.Green));
+        AnsiConsole.Write(
+            new Rule("[green]StoneFlyLabs[/] [grey]· Azure Service Bus DLQ Reconciliation[/]")
+                .RuleStyle("green dim"));
         AnsiConsole.WriteLine();
     }
 
@@ -57,7 +69,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         while (true)
         {
-            AnsiConsole.Write(new Rule("[deepskyblue1 dim] Connect [/]").RuleStyle("deepskyblue1 dim"));
+            AnsiConsole.Write(new Rule("[green dim] Connect [/]").RuleStyle("green dim"));
             AnsiConsole.WriteLine();
 
             Helpers.AzureSubscription? currentSub = null;
@@ -65,7 +77,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
             await AnsiConsole.Status()
                 .Spinner(Spinner.Known.BouncingBar)
-                .SpinnerStyle(Style.Parse("deepskyblue1"))
+                .SpinnerStyle(Style.Parse("green"))
                 .StartAsync("[grey]Discovering namespaces…[/]", async _ =>
                 {
                     currentSub = await Helpers.AzureCliHelper.GetCurrentSubscriptionAsync();
@@ -97,12 +109,12 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                         ? "[grey]Select namespace:[/]"
                         : "[grey]No namespaces found in this subscription — enter one manually or switch subscriptions:[/]")
                     .PageSize(20)
-                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                    .HighlightStyle(Style.Parse("green bold"))
                     .UseConverter(c => c switch
                     {
                         ChoiceManual    => "[grey]✎  Enter namespace manually…[/]",
                         ChoiceSwitchSub => "[grey]⟳  Switch Azure subscription…[/]",
-                        _               => $"[deepskyblue1]{Markup.Escape(c)}[/]"
+                        _               => $"[green]{Markup.Escape(c)}[/]"
                     })
                     .AddChoices(choices));
 
@@ -116,7 +128,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
             if (selection == ChoiceManual)
             {
-                var prompt = new TextPrompt<string>("[deepskyblue1]Namespace[/] [grey](name or FQDN)[/]:")
+                var prompt = new TextPrompt<string>("[green]Namespace[/] [grey](name or FQDN)[/]:")
                     .Validate(v => string.IsNullOrWhiteSpace(v)
                         ? ValidationResult.Error("Required")
                         : ValidationResult.Success());
@@ -138,7 +150,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.BouncingBar)
-            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .SpinnerStyle(Style.Parse("green"))
             .StartAsync("[grey]Loading subscriptions…[/]", async _ =>
             {
                 subs = await Helpers.AzureCliHelper.GetSubscriptionsAsync();
@@ -162,12 +174,12 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
             new SelectionPrompt<Helpers.AzureSubscription>()
                 .Title("[grey]Select subscription:[/]")
                 .PageSize(20)
-                .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                .HighlightStyle(Style.Parse("green bold"))
                 .UseConverter(s =>
                 {
                     var label = $"{Markup.Escape(s.Name)}  [grey dim]{s.Id}[/]";
                     var stateTag = s.State != "Enabled" ? $"  [red dim]{Markup.Escape(s.State)}[/]" : string.Empty;
-                    var currentTag = s.IsDefault ? "  [deepskyblue1](current)[/]" : string.Empty;
+                    var currentTag = s.IsDefault ? "  [green](current)[/]" : string.Empty;
                     return $"{label}{currentTag}{stateTag}";
                 })
                 .AddChoices(subs));
@@ -182,7 +194,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         bool ok = false;
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.BouncingBar)
-            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .SpinnerStyle(Style.Parse("green"))
             .StartAsync("[grey]Switching subscription…[/]", async _ =>
             {
                 ok = await Helpers.AzureCliHelper.SetSubscriptionAsync(sub.Id);
@@ -208,14 +220,14 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         {
             AnsiConsole.Clear();
             ShowBanner();
-            AnsiConsole.MarkupLine($"[grey]  Connected:[/] [deepskyblue1 bold]{_repo!.NamespaceFqdn}[/]\n");
+            AnsiConsole.MarkupLine($"[grey]  Connected:[/] [green bold]{_repo!.NamespaceFqdn}[/]\n");
 
             List<EntityInfo>? entities = null;
             Exception? loadErr = null;
 
             await AnsiConsole.Status()
                 .Spinner(Spinner.Known.BouncingBar)
-                .SpinnerStyle(Style.Parse("deepskyblue1"))
+                .SpinnerStyle(Style.Parse("green"))
                 .StartAsync("[grey]Loading entities…[/]", async _ =>
                 {
                     try   { entities = await _repo.GetEntitiesWithDlqMessagesAsync(); }
@@ -238,7 +250,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                 var idle = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
                         .Title("[grey]What next?[/]")
-                        .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                        .HighlightStyle(Style.Parse("green bold"))
                         .AddChoices("↺  Refresh", "⚡ Seed DLQ", "✕  Exit"));
                 if (idle.StartsWith('✕')) return;
                 if (idle.StartsWith('⚡')) await new SeederFlow(_repo).RunAsync();
@@ -251,7 +263,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                 new SelectionPrompt<EntityInfo>()
                     .Title("[grey]Select entity to process:[/]")
                     .PageSize(20)
-                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                    .HighlightStyle(Style.Parse("green bold"))
                     .UseConverter(EntityLabel)
                     .AddChoices([.. entities, SeedSentinel, RefreshSentinel, ExitSentinel]));
 
@@ -275,7 +287,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         if (e == RefreshSentinel) return "[grey]↺  Refresh[/]";
         if (e == ExitSentinel)    return "[grey]✕  Exit[/]";
 
-        var icon = e.IsQueue ? "[deepskyblue1]≡[/]" : "[gold1]⬡[/]";
+        var icon = e.IsQueue ? "[green]≡[/]" : "[gold1]⬡[/]";
         var countColor = e.DlqMessageCount switch
         {
             <= 5  => "yellow",
@@ -290,20 +302,20 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         var total = entities.Sum(e => e.DlqMessageCount);
 
         AnsiConsole.MarkupLine(
-            $"  [grey]Found [/][deepskyblue1 bold]{entities.Count}[/]" +
+            $"  [grey]Found [/][green bold]{entities.Count}[/]" +
             $"[grey] entit{(entities.Count == 1 ? "y" : "ies")} · [/]" +
             $"[red bold]{total}[/][grey] dead-lettered message{(total == 1 ? "" : "s")}[/]\n");
 
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .BorderColor(Color.DeepSkyBlue1)
+            .BorderColor(Color.Green)
             .AddColumn(new TableColumn("[bold]Entity[/]"))
             .AddColumn(new TableColumn("[bold]Type[/]").Centered())
             .AddColumn(new TableColumn("[bold]DLQ[/]").RightAligned());
 
         foreach (var e in entities)
         {
-            var typeLabel = e.IsQueue ? "[deepskyblue1]≡ Queue[/]" : "[gold1]⬡ Topic/Sub[/]";
+            var typeLabel = e.IsQueue ? "[green]≡ Queue[/]" : "[gold1]⬡ Topic/Sub[/]";
             var countLabel = e.DlqMessageCount switch
             {
                 <= 5  => $"[yellow]{e.DlqMessageCount}[/]",
@@ -326,8 +338,8 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.BouncingBar)
-            .SpinnerStyle(Style.Parse("deepskyblue1"))
-            .StartAsync($"[grey]Receiving from[/] [deepskyblue1]{Markup.Escape(entity.DisplayName)}[/] [grey]DLQ…[/]", async _ =>
+            .SpinnerStyle(Style.Parse("green"))
+            .StartAsync($"[grey]Receiving from[/] [green]{Markup.Escape(entity.DisplayName)}[/] [grey]DLQ…[/]", async _ =>
             {
                 try   { session = await _repo!.OpenDlqSessionAsync(entity, maxMessages: 20); }
                 catch (Exception ex) { err = ex; }
@@ -364,15 +376,15 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         {
             AnsiConsole.Clear();
             AnsiConsole.Write(
-                new Rule($"[deepskyblue1 bold] ◆ {Markup.Escape(session.Entity.DisplayName)} [/]  [grey]{pending.Count} message(s) in batch[/]")
-                    .RuleStyle("deepskyblue1 dim"));
+                new Rule($"[green bold] ◆ {Markup.Escape(session.Entity.DisplayName)} [/]  [grey]{pending.Count} message(s) in batch[/]")
+                    .RuleStyle("green dim"));
             AnsiConsole.WriteLine();
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<MsgItem>()
                     .Title("[grey]Select message to inspect, or choose an action:[/]")
                     .PageSize(20)
-                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                    .HighlightStyle(Style.Parse("green bold"))
                     .UseConverter(item => item switch
                     {
                         { IsBulkSend: true } => $"[green]⚡ Bulk Send…[/]  [grey]({pending.Count} available)[/]",
@@ -473,7 +485,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.BouncingBar)
-            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .SpinnerStyle(Style.Parse("green"))
             .StartAsync("[grey]Loading destinations…[/]", async _ =>
             {
                 try   { destinations = await _repo!.GetAllSendDestinationsAsync(); }
@@ -538,7 +550,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.BouncingBar)
-            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .SpinnerStyle(Style.Parse("green"))
             .StartAsync("[grey]Renewing locks…[/]", async _ =>
             {
                 foreach (var m in selected)
@@ -608,7 +620,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                     new SelectionPrompt<string>()
                         .Title("[grey]Action:[/]")
                         .PageSize(10)
-                        .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                        .HighlightStyle(Style.Parse("green bold"))
                         .AddChoices(
                             "✎  Edit Body",
                             "✎  Edit Application Properties",
@@ -689,9 +701,9 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
             AddRow(grid, "Correlation ID",   $"[grey]{Markup.Escape(msg.CorrelationId)}[/]");
 
         AnsiConsole.Write(new Panel(grid)
-            .Header("[deepskyblue1 bold] ◆ Message Details [/]")
+            .Header("[green bold] ◆ Message Details [/]")
             .Border(BoxBorder.Rounded)
-            .BorderColor(Color.DeepSkyBlue1)
+            .BorderColor(Color.Green)
             .Padding(1, 0));
 
         var isJson = JsonHelper.IsValid(msg.Body, out _);
@@ -699,15 +711,15 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         var bodyText  = isJson ? JsonHelper.TryFormat(msg.Body)
                       : isXml  ? XmlHelper.TryFormat(msg.Body)
                       : msg.Body;
-        var bodyTitle = isJson ? "[deepskyblue1 bold] ◆ Body · JSON [/]"
-                      : isXml  ? "[deepskyblue1 bold] ◆ Body · XML [/]"
-                      : "[deepskyblue1 bold] ◆ Body [/]";
+        var bodyTitle = isJson ? "[green bold] ◆ Body · JSON [/]"
+                      : isXml  ? "[green bold] ◆ Body · XML [/]"
+                      : "[green bold] ◆ Body [/]";
         var display   = bodyText.Length > 3000 ? bodyText[..3000] + "\n[grey]… (truncated)[/]" : bodyText;
 
         AnsiConsole.Write(new Panel(new Markup(Markup.Escape(display)))
             .Header(bodyTitle)
             .Border(BoxBorder.Rounded)
-            .BorderColor(Color.DeepSkyBlue1)
+            .BorderColor(Color.Green)
             .Padding(1, 0));
 
         if (msg.ApplicationProperties.Count > 0)
@@ -720,13 +732,13 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
             foreach (var (k, v) in msg.ApplicationProperties)
                 propTable.AddRow(
-                    $"[deepskyblue1]{Markup.Escape(k)}[/]",
+                    $"[green]{Markup.Escape(k)}[/]",
                     Markup.Escape(v?.ToString() ?? "[grey](null)[/]"));
 
             AnsiConsole.Write(new Panel(propTable)
-                .Header("[deepskyblue1 bold] ◆ Application Properties [/]")
+                .Header("[green bold] ◆ Application Properties [/]")
                 .Border(BoxBorder.Rounded)
-                .BorderColor(Color.DeepSkyBlue1)
+                .BorderColor(Color.Green)
                 .Padding(1, 0));
         }
 
@@ -811,21 +823,21 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         {
             AnsiConsole.Clear();
             AnsiConsole.Write(
-                new Rule("[deepskyblue1 bold] ◆ Application Properties [/]")
-                    .RuleStyle("deepskyblue1 dim"));
+                new Rule("[green bold] ◆ Application Properties [/]")
+                    .RuleStyle("green dim"));
             AnsiConsole.WriteLine();
 
             if (message.ApplicationProperties.Count > 0)
             {
                 var t = new Table()
                     .Border(TableBorder.Rounded)
-                    .BorderColor(Color.DeepSkyBlue1)
+                    .BorderColor(Color.Green)
                     .AddColumn(new TableColumn("[bold]Key[/]"))
                     .AddColumn(new TableColumn("[bold]Value[/]"));
 
                 foreach (var (k, v) in message.ApplicationProperties)
                     t.AddRow(
-                        $"[deepskyblue1]{Markup.Escape(k)}[/]",
+                        $"[green]{Markup.Escape(k)}[/]",
                         Markup.Escape(v?.ToString() ?? "[grey](null)[/]"));
 
                 AnsiConsole.Write(t);
@@ -840,14 +852,14 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
             var action = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("[grey]Action:[/]")
-                    .HighlightStyle(Style.Parse("deepskyblue1 bold"))
+                    .HighlightStyle(Style.Parse("green bold"))
                     .AddChoices("✎  Add / Edit property", "✗  Remove property", "↩  Done"));
 
             switch (action)
             {
                 case "✎  Add / Edit property":
-                    var key = AnsiConsole.Ask<string>("[deepskyblue1]Key:[/]");
-                    var val = AnsiConsole.Ask<string>("[deepskyblue1]Value:[/]");
+                    var key = AnsiConsole.Ask<string>("[green]Key:[/]");
+                    var val = AnsiConsole.Ask<string>("[green]Value:[/]");
                     message.ApplicationProperties[key] = val;
                     break;
 
@@ -880,7 +892,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.BouncingBar)
-            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .SpinnerStyle(Style.Parse("green"))
             .StartAsync("[grey]Loading destinations…[/]", async _ =>
             {
                 try   { destinations = await _repo!.GetAllSendDestinationsAsync(); }
