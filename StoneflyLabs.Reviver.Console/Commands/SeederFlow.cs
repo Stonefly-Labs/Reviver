@@ -1,9 +1,9 @@
-using StoneFlyLabs.Reviver.Console.Helpers;
-using StoneFlyLabs.Reviver.Console.Models;
-using StoneFlyLabs.Reviver.Console.Services;
+using StoneflyLabs.Reviver.Console.Helpers;
+using StoneflyLabs.Reviver.Console.Models;
+using StoneflyLabs.Reviver.Console.Services;
 using Spectre.Console;
 
-namespace StoneFlyLabs.Reviver.Console.Commands;
+namespace StoneflyLabs.Reviver.Console.Commands;
 
 public sealed class SeederFlow(IServiceBusRepository repo)
 {

@@ -1,6 +1,6 @@
-using StoneFlyLabs.Reviver.Console.Helpers;
+using StoneflyLabs.Reviver.Console.Helpers;
 
-namespace StoneFlyLabs.Reviver.Tests.Helpers;
+namespace StoneflyLabs.Reviver.Tests.Helpers;
 
 public sealed class XmlHelperTests
 {

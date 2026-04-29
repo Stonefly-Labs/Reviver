@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace StoneFlyLabs.Reviver.Console.Helpers;
+namespace StoneflyLabs.Reviver.Console.Helpers;
 
 internal static class AzureCliHelper
 {

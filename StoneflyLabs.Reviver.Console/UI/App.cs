@@ -1,11 +1,11 @@
 using System.Diagnostics;
-using StoneFlyLabs.Reviver.Console.Commands;
-using StoneFlyLabs.Reviver.Console.Helpers;
-using StoneFlyLabs.Reviver.Console.Models;
-using StoneFlyLabs.Reviver.Console.Services;
+using StoneflyLabs.Reviver.Console.Commands;
+using StoneflyLabs.Reviver.Console.Helpers;
+using StoneflyLabs.Reviver.Console.Models;
+using StoneflyLabs.Reviver.Console.Services;
 using Spectre.Console;
 
-namespace StoneFlyLabs.Reviver.Console.UI;
+namespace StoneflyLabs.Reviver.Console.UI;
 
 public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 {
@@ -41,7 +41,7 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         AnsiConsole.WriteLine();
         AnsiConsole.Write(new FigletText("Reviver").Color(Color.DeepSkyBlue1));
         AnsiConsole.Write(
-            new Rule("[deepskyblue1]StoneFlyLabs[/] [grey]· Azure Service Bus DLQ Reconciliation[/]")
+            new Rule("[deepskyblue1]StoneflyLabs[/] [grey]· Azure Service Bus DLQ Reconciliation[/]")
                 .RuleStyle("deepskyblue1 dim"));
         AnsiConsole.WriteLine();
     }
