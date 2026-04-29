@@ -83,12 +83,12 @@ jobs:
       - name: Compute version (dev push)
         if: github.ref == 'refs/heads/dev'
         run: |
-          VP=$(sed -n 's/.*<VersionPrefix>\(.*\)<\/VersionPrefix>.*/\1/p' Reviver.Console/Reviver.Console.csproj)
+          VP=$(sed -n 's/.*<VersionPrefix>\(.*\)<\/VersionPrefix>.*/\1/p' StoneflyLabs.Reviver.Console/StoneflyLabs.Reviver.Console.csproj)
           echo "PACKAGE_VERSION=${VP}-beta.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Pack
         run: |
-          dotnet pack Reviver.Console/Reviver.Console.csproj \
+          dotnet pack StoneflyLabs.Reviver.Console/StoneflyLabs.Reviver.Console.csproj \
             -c Release \
             -p:Version=${{ env.PACKAGE_VERSION }} \
             -o ./nupkg
