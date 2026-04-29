@@ -99,7 +99,7 @@ jobs:
       # ── Self-contained builds ─────────────────────────────────────────────────
       - name: Publish — win-x64
         run: |
-          dotnet publish Reviver.Console/Reviver.Console.csproj \
+          dotnet publish StoneflyLabs.Reviver.Console/StoneflyLabs.Reviver.Console.csproj \
             -c Release -r win-x64 --self-contained true \
             -p:PublishSingleFile=true \
             -p:Version=${{ steps.version.outputs.semver }} \
@@ -107,7 +107,7 @@ jobs:
 
       - name: Publish — linux-x64
         run: |
-          dotnet publish Reviver.Console/Reviver.Console.csproj \
+          dotnet publish StoneflyLabs.Reviver.Console/StoneflyLabs.Reviver.Console.csproj \
             -c Release -r linux-x64 --self-contained true \
             -p:PublishSingleFile=true \
             -p:Version=${{ steps.version.outputs.semver }} \
@@ -115,7 +115,7 @@ jobs:
 
       - name: Publish — osx-x64
         run: |
-          dotnet publish Reviver.Console/Reviver.Console.csproj \
+          dotnet publish StoneflyLabs.Reviver.Console/StoneflyLabs.Reviver.Console.csproj \
             -c Release -r osx-x64 --self-contained true \
             -p:PublishSingleFile=true \
             -p:Version=${{ steps.version.outputs.semver }} \
@@ -123,7 +123,7 @@ jobs:
 
       - name: Publish — osx-arm64
         run: |
-          dotnet publish Reviver.Console/Reviver.Console.csproj \
+          dotnet publish StoneflyLabs.Reviver.Console/StoneflyLabs.Reviver.Console.csproj \
             -c Release -r osx-arm64 --self-contained true \
             -p:PublishSingleFile=true \
             -p:Version=${{ steps.version.outputs.semver }} \
@@ -132,7 +132,7 @@ jobs:
       # ── NuGet global tool package ─────────────────────────────────────────────
       - name: Pack NuGet tool
         run: |
-          dotnet pack Reviver.Console/Reviver.Console.csproj \
+          dotnet pack StoneflyLabs.Reviver.Console/StoneflyLabs.Reviver.Console.csproj \
             -c Release \
             -p:Version=${{ steps.version.outputs.semver }} \
             -o publish/nupkg
