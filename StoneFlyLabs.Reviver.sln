@@ -5,9 +5,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		CLAUDE.md = CLAUDE.md
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Reviver.Console", "Reviver.Console\Reviver.Console.csproj", "{9B01B885-D17A-4FB5-AF60-371CA3B162A9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StoneflyLabs.Reviver.Console", "StoneflyLabs.Reviver.Console\StoneflyLabs.Reviver.Console.csproj", "{9B01B885-D17A-4FB5-AF60-371CA3B162A9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Reviver.Tests", "Reviver.Tests\Reviver.Tests.csproj", "{92DBFCBF-1AF3-4A1D-B0D5-8358B9A6D489}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StoneflyLabs.Reviver.Tests", "StoneflyLabs.Reviver.Tests\StoneflyLabs.Reviver.Tests.csproj", "{92DBFCBF-1AF3-4A1D-B0D5-8358B9A6D489}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -20,7 +20,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Reviver.Console\Reviver.Console.csproj" />
+        <ProjectReference Include="..\StoneflyLabs.Reviver.Console\StoneflyLabs.Reviver.Console.csproj" />
     </ItemGroup>
 
 </Project>
