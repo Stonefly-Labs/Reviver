@@ -33,7 +33,7 @@ Reviver connects to an Azure Service Bus namespace, lists every queue and topic 
 ### From NuGet
 
 ```bash
-dotnet tool install -g StoneFlyLabs.Reviver
+dotnet tool install -g StoneflyLabs.Reviver
 ```
 
 ### From source
@@ -42,19 +42,19 @@ dotnet tool install -g StoneFlyLabs.Reviver
 git clone <repo>
 cd Reviver
 dotnet pack Reviver.Console/Reviver.Console.csproj -c Release
-dotnet tool install -g StoneFlyLabs.Reviver --add-source Reviver.Console/nupkg
+dotnet tool install -g StoneflyLabs.Reviver --add-source Reviver.Console/nupkg
 ```
 
 To update an existing installation:
 
 ```bash
-dotnet tool update -g StoneFlyLabs.Reviver
+dotnet tool update -g StoneflyLabs.Reviver
 ```
 
 To uninstall:
 
 ```bash
-dotnet tool uninstall -g StoneFlyLabs.Reviver
+dotnet tool uninstall -g StoneflyLabs.Reviver
 ```
 
 ## Quick start
@@ -125,7 +125,7 @@ reviver version
 Two projects in one solution:
 
 ```
-StoneFlyLabs.Reviver.sln
+StoneflyLabs.Reviver.sln
 ├── Reviver.Console/   — app (assembly: reviver)
 │   ├── UI/App.cs      — all TUI screens and user interaction
 │   ├── Commands/      — CliCommands (Cocona), SeederFlow (TUI seed wizard)
@@ -174,4 +174,4 @@ The release includes four self-contained binaries and the NuGet global tool pack
 | `reviver-vX.Y.Z-linux-x64.tar.gz` | Linux x64 |
 | `reviver-vX.Y.Z-osx-x64.tar.gz` | macOS Intel |
 | `reviver-vX.Y.Z-osx-arm64.tar.gz` | macOS Apple Silicon |
-| `StoneFlyLabs.Reviver.X.Y.Z.nupkg` | .NET global tool (all platforms) |
+| `StoneflyLabs.Reviver.X.Y.Z.nupkg` | .NET global tool (all platforms) |

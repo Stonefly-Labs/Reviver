@@ -1,12 +1,12 @@
 using Cocona;
 using System.ComponentModel;
-using StoneFlyLabs.Reviver.Console.Helpers;
-using StoneFlyLabs.Reviver.Console.Models;
-using StoneFlyLabs.Reviver.Console.Services;
-using StoneFlyLabs.Reviver.Console.UI;
+using StoneflyLabs.Reviver.Console.Helpers;
+using StoneflyLabs.Reviver.Console.Models;
+using StoneflyLabs.Reviver.Console.Services;
+using StoneflyLabs.Reviver.Console.UI;
 using Spectre.Console;
 
-namespace StoneFlyLabs.Reviver.Console.Commands;
+namespace StoneflyLabs.Reviver.Console.Commands;
 
 public sealed class CliCommands
 {
@@ -106,7 +106,7 @@ public sealed class CliCommands
         AnsiConsole.Write(new FigletText("Reviver").Color(Color.Blue));
         AnsiConsole.MarkupLine($"[bold]Version:[/] [blue]{ver}[/]");
         AnsiConsole.MarkupLine($"[bold]Runtime:[/] {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-        AnsiConsole.MarkupLine($"[bold]Purpose:[/] StoneFlyLabs · Azure Service Bus DLQ Reconciliation");
+        AnsiConsole.MarkupLine($"[bold]Purpose:[/] StoneflyLabs · Azure Service Bus DLQ Reconciliation");
         AnsiConsole.MarkupLine($"[bold]Auth:[/]    Azure CLI credential ([grey]az login[/])");
     }
 

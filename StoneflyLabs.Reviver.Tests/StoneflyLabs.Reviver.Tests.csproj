@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
-        <RootNamespace>StoneFlyLabs.Reviver.Tests</RootNamespace>
+        <RootNamespace>StoneflyLabs.Reviver.Tests</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
@@ -20,7 +20,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Reviver.Console\Reviver.Console.csproj" />
+        <ProjectReference Include="..\StoneflyLabs.Reviver.Console\StoneflyLabs.Reviver.Console.csproj" />
     </ItemGroup>
 
 </Project>

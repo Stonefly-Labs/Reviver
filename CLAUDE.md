@@ -41,8 +41,8 @@ The tool requires `az login` before running — auth uses `AzureCliCredential`. 
 ## Architecture
 
 **Two projects** in one solution:
-- `ConsoleApp1/` — the app, assembly name `reviver`, root namespace `StoneFlyLabs.Reviver`
-- `Reviver.Tests/` — xUnit + NSubstitute tests, root namespace `StoneFlyLabs.Reviver.Tests`
+- `ConsoleApp1/` — the app, assembly name `reviver`, root namespace `StoneflyLabs.Reviver`
+- `Reviver.Tests/` — xUnit + NSubstitute tests, root namespace `StoneflyLabs.Reviver.Tests`
 
 ### Dependency flow
 

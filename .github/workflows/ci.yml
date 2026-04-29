@@ -158,4 +158,4 @@ jobs:
             reviver-${{ steps.version.outputs.version }}-linux-x64.tar.gz
             reviver-${{ steps.version.outputs.version }}-osx-x64.tar.gz
             reviver-${{ steps.version.outputs.version }}-osx-arm64.tar.gz
-            publish/nupkg/StoneFlyLabs.Reviver.${{ steps.version.outputs.semver }}.nupkg
+            publish/nupkg/StoneflyLabs.Reviver.${{ steps.version.outputs.semver }}.nupkg

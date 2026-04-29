@@ -1,8 +1,8 @@
 using Azure.Messaging.ServiceBus;
-using StoneFlyLabs.Reviver.Console.Models;
-using StoneFlyLabs.Reviver.Console.Services;
+using StoneflyLabs.Reviver.Console.Models;
+using StoneflyLabs.Reviver.Console.Services;
 
-namespace StoneFlyLabs.Reviver.Tests.Services;
+namespace StoneflyLabs.Reviver.Tests.Services;
 
 /// <summary>
 /// Contract tests against IServiceBusRepository using a mock. Validates that callers
@@ -72,7 +72,7 @@ public sealed class ServiceBusRepositoryTests
     public async Task SeedDlq_CallsRepositoryWithCorrectCountAndReason()
     {
         var entity = new EntityInfo("[Q] test", "test", null, 0);
-        var template = StoneFlyLabs.Reviver.Console.Helpers.PayloadTemplate.Default;
+        var template = StoneflyLabs.Reviver.Console.Helpers.PayloadTemplate.Default;
 
         await _repo.SeedDlqAsync(entity, 10, template, "MyReason", null, null);
 
