@@ -6,15 +6,15 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AssemblyName>reviver</AssemblyName>
-        <RootNamespace>StoneFlyLabs.Reviver.Console</RootNamespace>
+        <RootNamespace>StoneflyLabs.Reviver.Console</RootNamespace>
         <VersionPrefix>1.0.0</VersionPrefix>
 
         <!-- NuGet package metadata -->
         <PackAsTool>true</PackAsTool>
         <ToolCommandName>reviver</ToolCommandName>
-        <PackageId>StoneFlyLabs.Reviver</PackageId>
+        <PackageId>StoneflyLabs.Reviver</PackageId>
         <Description>Interactive TUI for triaging and reprocessing Azure Service Bus dead-letter queues.</Description>
-        <Authors>StoneFlyLabs</Authors>
+        <Authors>StoneflyLabs</Authors>
         <PackageTags>azure;servicebus;dlq;tui;devops</PackageTags>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
         <PackageIcon>reviver-package-icon.png</PackageIcon>

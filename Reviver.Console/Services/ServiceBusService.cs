@@ -1,10 +1,10 @@
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
-using StoneFlyLabs.Reviver.Console.Helpers;
-using StoneFlyLabs.Reviver.Console.Models;
+using StoneflyLabs.Reviver.Console.Helpers;
+using StoneflyLabs.Reviver.Console.Models;
 
-namespace StoneFlyLabs.Reviver.Console.Services;
+namespace StoneflyLabs.Reviver.Console.Services;
 
 public sealed class ServiceBusService : IServiceBusRepository
 {

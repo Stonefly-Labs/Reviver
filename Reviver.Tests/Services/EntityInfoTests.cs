@@ -1,6 +1,6 @@
-using StoneFlyLabs.Reviver.Console.Models;
+using StoneflyLabs.Reviver.Console.Models;
 
-namespace StoneFlyLabs.Reviver.Tests.Services;
+namespace StoneflyLabs.Reviver.Tests.Services;
 
 public sealed class EntityInfoTests
 {

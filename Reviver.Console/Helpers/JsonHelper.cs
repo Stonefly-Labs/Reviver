@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace StoneFlyLabs.Reviver.Console.Helpers;
+namespace StoneflyLabs.Reviver.Console.Helpers;
 
 public static class JsonHelper
 {
