@@ -352,12 +352,13 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
         await ProcessBatchAsync(s);
     }
 
-    private sealed record MsgItem(DlqMessage? Message);
+    private sealed record MsgItem(DlqMessage? Message, bool IsBulkSend = false);
 
     private async Task ProcessBatchAsync(IDlqSession session)
     {
-        var pending = session.Messages.ToList();
-        var doneItem = new MsgItem((DlqMessage?)null);
+        var pending  = session.Messages.ToList();
+        var bulkItem = new MsgItem(null, IsBulkSend: true);
+        var doneItem = new MsgItem(null);
 
         while (pending.Count > 0)
         {
@@ -369,19 +370,32 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<MsgItem>()
-                    .Title("[grey]Select message to inspect:[/]")
+                    .Title("[grey]Select message to inspect, or choose an action:[/]")
                     .PageSize(20)
                     .HighlightStyle(Style.Parse("deepskyblue1 bold"))
-                    .UseConverter(item => MsgLabel(item.Message))
-                    .AddChoices([.. pending.Select(m => new MsgItem(m)), doneItem]));
+                    .UseConverter(item => item switch
+                    {
+                        { IsBulkSend: true } => $"[green]⚡ Bulk Send…[/]  [grey]({pending.Count} available)[/]",
+                        { Message: null }     => "[grey]↩  Done — release remaining back to DLQ[/]",
+                        _                    => MsgLabel(item.Message)
+                    })
+                    .AddChoices([.. pending.Select(m => new MsgItem(m)), bulkItem, doneItem]));
 
-            if (choice.Message is null)
+            if (choice == doneItem)
             {
                 await AbandonAllAsync(session, pending);
                 break;
             }
 
-            var msg = choice.Message;
+            if (choice == bulkItem)
+            {
+                var sent = await BulkSendFlowAsync(session, pending);
+                foreach (var m in sent)
+                    pending.Remove(m);
+                continue;
+            }
+
+            var msg = choice.Message!;
             var action = await ShowMessageDetailAsync(session, msg);
 
             if (action is MessageAction.Sent or MessageAction.SentKept or MessageAction.Discarded)
@@ -430,6 +444,150 @@ public sealed class App(Func<string, IServiceBusRepository> repoFactory)
                     catch { /* best-effort */ }
                 }
             });
+    }
+
+    // ── Bulk send flow ────────────────────────────────────────────────────────
+
+    private async Task<List<DlqMessage>> BulkSendFlowAsync(IDlqSession session, List<DlqMessage> pending)
+    {
+        AnsiConsole.Clear();
+        AnsiConsole.Write(new Rule("[green bold] ⚡ Bulk Send [/]").RuleStyle("green dim"));
+        AnsiConsole.WriteLine();
+
+        var selected = AnsiConsole.Prompt(
+            new MultiSelectionPrompt<DlqMessage>()
+                .Title("[grey]Select messages to send (Space to toggle, Enter to confirm):[/]")
+                .PageSize(20)
+                .UseConverter(m => MsgLabel(m))
+                .AddChoices(pending));
+
+        if (selected.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]⚠ No messages selected.[/]");
+            await Task.Delay(700);
+            return [];
+        }
+
+        List<EntityInfo>? destinations = null;
+        Exception? err = null;
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.BouncingBar)
+            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .StartAsync("[grey]Loading destinations…[/]", async _ =>
+            {
+                try   { destinations = await _repo!.GetAllSendDestinationsAsync(); }
+                catch (Exception ex) { err = ex; }
+            });
+
+        if (err is not null)
+        {
+            AnsiConsole.MarkupLine($"[red bold]✗ Error loading destinations:[/] {Markup.Escape(err.Message)}");
+            Pause();
+            return [];
+        }
+
+        if (destinations is null || destinations.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red bold]✗ No destinations found.[/]");
+            Pause();
+            return [];
+        }
+
+        var defaultDest = destinations.FirstOrDefault(d => d.QueueOrTopicName == session.Entity.SendPath);
+        if (defaultDest is not null)
+        {
+            destinations.Remove(defaultDest);
+            destinations.Insert(0, defaultDest);
+        }
+
+        var dest = AnsiConsole.Prompt(
+            new SelectionPrompt<EntityInfo>()
+                .Title("[grey]Send to:[/]")
+                .PageSize(25)
+                .HighlightStyle(Style.Parse("green bold"))
+                .UseConverter(e =>
+                {
+                    var label = Markup.Escape(e.DisplayName);
+                    return defaultDest is not null && e == defaultDest
+                        ? $"[green bold]{label}[/]  [grey](original source)[/]"
+                        : label;
+                })
+                .AddChoices(destinations));
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine($"[grey]Destination:[/] [green bold]{Markup.Escape(dest.DisplayName)}[/]");
+        AnsiConsole.MarkupLine($"[grey]Messages:   [/] [bold]{selected.Count}[/]");
+        AnsiConsole.WriteLine();
+
+        var confirm = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[grey]Confirm:[/]")
+                .HighlightStyle(Style.Parse("green bold"))
+                .AddChoices(
+                    $"▶  Send {selected.Count} message(s) and remove from DLQ",
+                    $"▶  Send {selected.Count} message(s) and keep in DLQ",
+                    "✕  Cancel"));
+
+        if (confirm.StartsWith('✕'))
+            return [];
+
+        var removeDlq = confirm.Contains("remove");
+        var succeeded = new List<DlqMessage>();
+        var failed    = new List<(DlqMessage Msg, string Error)>();
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.BouncingBar)
+            .SpinnerStyle(Style.Parse("deepskyblue1"))
+            .StartAsync("[grey]Renewing locks…[/]", async _ =>
+            {
+                foreach (var m in selected)
+                    try { await session.RenewLockAsync(m); } catch { /* best-effort */ }
+            });
+
+        await AnsiConsole.Progress()
+            .StartAsync(async ctx =>
+            {
+                var task = ctx.AddTask($"[green]Sending {selected.Count} message(s)…[/]", maxValue: selected.Count);
+
+                foreach (var m in selected)
+                {
+                    try
+                    {
+                        await _repo!.SendMessageAsync(dest.SendPath, m);
+                    }
+                    catch (Exception ex)
+                    {
+                        failed.Add((m, ex.Message));
+                        task.Increment(1);
+                        continue;
+                    }
+
+                    if (removeDlq)
+                        try { await session.CompleteAsync(m); } catch { /* sent; lock may have expired */ }
+
+                    succeeded.Add(m);
+                    task.Increment(1);
+                }
+            });
+
+        AnsiConsole.WriteLine();
+
+        if (failed.Count > 0)
+        {
+            AnsiConsole.Write(new Rule("[red] Send Errors [/]").RuleStyle("red dim"));
+            foreach (var (m, e) in failed)
+                AnsiConsole.MarkupLine($"  [red]✗[/] [grey]{Markup.Escape(m.MessageId)}:[/] {Markup.Escape(e)}");
+            AnsiConsole.WriteLine();
+        }
+
+        var removedNote = removeDlq ? " and removed from DLQ" : " (kept in DLQ)";
+        AnsiConsole.MarkupLine($"[green bold]✓ {succeeded.Count}/{selected.Count}[/][grey] message(s) sent{removedNote}.[/]");
+        if (failed.Count > 0)
+            AnsiConsole.MarkupLine($"[red]✗ {failed.Count}[/][grey] message(s) failed — still in batch for retry.[/]");
+
+        Pause();
+        return succeeded;
     }
 
     // ── Message detail + action loop ──────────────────────────────────────────
